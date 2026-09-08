@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:apk_install/apk_install.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-const String appVersion = '1.0.1+101';
+const String appVersion = '1.1.0+110';
 const String defaultPassword = '1234';
+const String updateManifestUrl = 'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json';
 const Map<int, double> tableRates = {1: 120, 2: 120, 3: 100, 4: 100, 5: 70};
 
 enum TableStatus { available, playing, pending }
@@ -186,6 +190,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Timer? ticker;
   String? lanIp;
   int tab = 0;
+  bool checkingUpdate = false;
 
   @override
   void initState() {
@@ -195,6 +200,7 @@ class _DashboardPageState extends State<DashboardPage> {
     ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
+    Future<void>.delayed(const Duration(seconds: 2), () => checkForUpdate(showNoUpdate: false));
   }
 
   @override
@@ -279,7 +285,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   String get tvHtml => r'''<!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Billares Don Miguel</title>
-<style>body{margin:0;background:#07120c;color:#fff;font-family:Arial,sans-serif}header{padding:20px;text-align:center;background:#0d2b1b;position:sticky;top:0}h1{margin:0;font-size:30px}.clock{font-size:20px;margin-top:6px;color:#d9f99d}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;padding:22px}.card{border-radius:18px;padding:22px;background:#15251c;border:2px solid #31523e;box-shadow:0 8px 30px #0008}.green{border-color:#36d76b}.red{border-color:#ff5252}.yellow{border-color:#f5c542}.name{font-size:28px;font-weight:800}.status{margin:10px 0;font-size:20px;font-weight:700}.line{margin:8px 0;color:#d8e7dc}.money{font-size:30px;font-weight:800;margin-top:14px}</style></head>
+<style>body{margin:0;background:#07120c;color:#fff;font-family:Arial,sans-serif}header{padding:20px;text-align:center;background:#0d2b1b;position:sticky;top:0}h1{margin:0;font-size:30px}.clock{font-size:20px;margin-top:6px;color:#d9f99d}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;padding:22px}.card{border-radius:18px;padding:22px;background:#15251c;border:2px solid #31523e;box-shadow:0 8px 30px #0008}.card.green{background:#123d24;border-color:#36d76b}.card.red{background:#541b1b;border-color:#ff5252}.card.yellow{background:#5a4a08;border-color:#f5c542}.name{font-size:28px;font-weight:800}.status{margin:10px 0;font-size:20px;font-weight:700}.line{margin:8px 0;color:#f0f7f2}.money{font-size:30px;font-weight:800;margin-top:14px}</style></head>
 <body><header><h1>BILLARES DON MIGUEL</h1><div id="clock" class="clock">Conectando...</div></header><main id="grid" class="grid"></main>
 <script>function money(n){return 'C$ '+Number(n).toFixed(2)}function render(d){document.getElementById('clock').textContent=d.time;document.getElementById('grid').innerHTML=d.tables.map(function(t){var c=t.status==='Disponible'?'green':t.status==='En juego'?'red':'yellow';return '<section class="card '+c+'"><div class="name">Mesa '+t.number+'</div><div class="status">'+t.status+'</div><div class="line">Inicio: '+(t.start||'—')+'</div><div class="line">Finalización: '+(t.end||'—')+'</div><div class="line">Tiempo jugado: '+t.elapsed+'</div><div class="money">'+money(t.amount)+'</div></section>'}).join('')}async function tick(){try{var r=await fetch('/api/state?x='+Date.now());render(await r.json())}catch(e){document.getElementById('clock').textContent='Sin conexión con CENTRAL'}}tick();setInterval(tick,1000)</script></body></html>''';
 
@@ -313,6 +319,86 @@ class _DashboardPageState extends State<DashboardPage> {
       table.amount = 0;
     });
     await saveHistory();
+  }
+
+  Future<void> openTv() async {
+    if (lanIp == null) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Esperando la conexión LAN de CENTRAL...')));
+      return;
+    }
+    final Uri uri = Uri.parse('http://$lanIp:8080/tv');
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir la pantalla del TV')));
+    }
+  }
+
+  int buildNumber(String version) {
+    final String value = version.split('+').last.trim();
+    return int.tryParse(value) ?? 0;
+  }
+
+  Future<void> checkForUpdate({bool showNoUpdate = true}) async {
+    if (checkingUpdate) return;
+    setState(() => checkingUpdate = true);
+    try {
+      final HttpClient client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 8);
+      final HttpClientRequest request = await client.getUrl(Uri.parse('$updateManifestUrl?x=${DateTime.now().millisecondsSinceEpoch}'));
+      request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
+      final HttpClientResponse response = await request.close();
+      if (response.statusCode != 200) throw const HttpException('Manifest no disponible');
+      final Map<String, dynamic> manifest = jsonDecode(await response.transform(utf8.decoder).join()) as Map<String, dynamic>;
+      client.close(force: true);
+      final String latestVersion = manifest['version'] as String? ?? appVersion;
+      final String? downloadUrl = manifest['apk_url'] as String?;
+      if (buildNumber(latestVersion) <= buildNumber(appVersion) || downloadUrl == null || downloadUrl.isEmpty) {
+        if (showNoUpdate && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('La aplicación ya está actualizada')));
+        return;
+      }
+      if (!mounted) return;
+      final bool? install = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Nueva actualización disponible'),
+          content: Text('Hay una nueva versión ($latestVersion). La aplicación puede descargarla e iniciar la instalación. Android puede pedir autorización para instalar actualizaciones desde esta fuente.'),
+          actions: <Widget>[
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Más tarde')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Actualizar ahora')),
+          ],
+        ),
+      );
+      if (install == true) await downloadAndInstall(downloadUrl);
+    } catch (_) {
+      if (showNoUpdate && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo comprobar la actualización. La aplicación continúa funcionando normalmente.')));
+    } finally {
+      if (mounted) setState(() => checkingUpdate = false);
+    }
+  }
+
+  Future<void> downloadAndInstall(String url) async {
+    try {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Descargando actualización...')));
+      final Directory directory = await getApplicationDocumentsDirectory();
+      final String path = '${directory.path}/billares-don-miguel-update.apk';
+      final HttpClient client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 20);
+      final HttpClientResponse response = await (await client.getUrl(Uri.parse(url))).close();
+      if (response.statusCode != 200) throw const HttpException('Descarga fallida');
+      final File file = File(path);
+      final IOSink sink = file.openWrite();
+      await response.pipe(sink);
+      await sink.flush();
+      await sink.close();
+      client.close(force: true);
+      final dynamic permission = await ApkInstall().onCheckInstallApkPermission();
+      if (permission == false && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Android necesita permiso para instalar la actualización desde esta fuente.')));
+      }
+      await ApkInstall().onInstallApk(path);
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo descargar o iniciar la instalación de la actualización.')));
+    }
   }
 
   Future<void> changePassword() async {
@@ -368,11 +454,22 @@ class _DashboardPageState extends State<DashboardPage> {
   Color statusColor(TableStatus status) {
     switch (status) {
       case TableStatus.available:
-        return Colors.green;
+        return Colors.green.shade100;
       case TableStatus.playing:
-        return Colors.red;
+        return Colors.red.shade100;
       case TableStatus.pending:
-        return Colors.amber.shade800;
+        return Colors.yellow.shade200;
+    }
+  }
+
+  Color statusTextColor(TableStatus status) {
+    switch (status) {
+      case TableStatus.available:
+        return Colors.green.shade900;
+      case TableStatus.playing:
+        return Colors.red.shade900;
+      case TableStatus.pending:
+        return Colors.orange.shade900;
     }
   }
 
@@ -382,21 +479,22 @@ class _DashboardPageState extends State<DashboardPage> {
     final VoidCallback action = table.status == TableStatus.available ? () => startGame(table) : table.status == TableStatus.playing ? () => finishGame(table) : () => collect(table);
     return Card(
       elevation: 3,
+      color: statusColor(table.status),
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
           Row(children: <Widget>[
-            Expanded(child: Text('Mesa ${table.number}', style: const TextStyle(fontSize: 23, fontWeight: FontWeight.bold))),
-            Chip(label: Text(table.statusText), avatar: CircleAvatar(backgroundColor: statusColor(table.status), radius: 6)),
+            Expanded(child: Text('Mesa ${table.number}', style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold, color: statusTextColor(table.status)))),
+            Chip(label: Text(table.statusText, style: TextStyle(color: statusTextColor(table.status))), avatar: CircleAvatar(backgroundColor: statusTextColor(table.status), radius: 6)),
           ]),
-          const Divider(),
-          Text('Tarifa fija: ${money(table.rate)} / hora'),
+          Divider(color: statusTextColor(table.status).withValues(alpha: 0.35)),
+          Text('Tarifa fija: ${money(table.rate)} / hora', style: TextStyle(color: statusTextColor(table.status))),
           const SizedBox(height: 8),
-          Text('Inicio: ${table.start == null ? '—' : clock(table.start!)}'),
-          Text('Finalización: ${table.end == null ? '—' : clock(table.end!)}'),
-          Text('Tiempo jugado: ${duration(table.elapsedSeconds)}'),
+          Text('Inicio: ${table.start == null ? '—' : clock(table.start!)}', style: TextStyle(color: statusTextColor(table.status))),
+          Text('Finalización: ${table.end == null ? '—' : clock(table.end!)}', style: TextStyle(color: statusTextColor(table.status))),
+          Text('Tiempo jugado: ${duration(table.elapsedSeconds)}', style: TextStyle(color: statusTextColor(table.status))),
           const SizedBox(height: 8),
-          Text(money(amount), style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+          Text(money(amount), style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: statusTextColor(table.status))),
           const SizedBox(height: 12),
           SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: action, icon: Icon(table.status == TableStatus.playing ? Icons.stop : Icons.play_arrow), label: Text(buttonText))),
         ]),
@@ -413,6 +511,8 @@ class _DashboardPageState extends State<DashboardPage> {
           ]),
           const SizedBox(height: 8),
           if (lanIp != null) Text('TV: http://$lanIp:8080/tv', style: const TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 10),
+          SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: openTv, icon: const Icon(Icons.tv), label: const Text('Enviar pantalla al televisor'))),
           const SizedBox(height: 12),
           Expanded(child: GridView.builder(
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 460, mainAxisExtent: 330, crossAxisSpacing: 14, mainAxisSpacing: 14),
@@ -457,6 +557,7 @@ class _DashboardPageState extends State<DashboardPage> {
         ]),
         actions: <Widget>[
           TextButton(onPressed: changePassword, child: const Text('Cambiar contraseña')),
+          TextButton(onPressed: () => checkForUpdate(), child: const Text('Buscar actualización')),
           FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
         ],
       ),
@@ -468,6 +569,7 @@ class _DashboardPageState extends State<DashboardPage> {
         appBar: AppBar(
           title: const Text('Billares Don Miguel', style: TextStyle(fontWeight: FontWeight.bold)),
           actions: <Widget>[
+            if (checkingUpdate) const Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))),
             IconButton(tooltip: 'Configuración', onPressed: showSettings, icon: const Icon(Icons.settings_outlined)),
             IconButton(tooltip: 'Cerrar sesión', onPressed: () => Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute<void>(builder: (_) => const LoginPage()), (_) => false), icon: const Icon(Icons.logout)),
           ],
