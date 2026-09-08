@@ -1,0 +1,63 @@
+name: Billares Don Miguel - Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout código actual
+        uses: actions/checkout@v4
+
+      - name: Configurar Flutter 3.29.3
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.29.3
+          channel: stable
+          cache: true
+
+      - name: Generar plataforma Android limpia
+        run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
+
+      - name: Configurar etiqueta de la aplicación
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('android/app/src/main/AndroidManifest.xml')
+          s=p.read_text()
+          s=s.replace('android:label="billares_don_miguel"','android:label="Billares Don Miguel"')
+          p.write_text(s)
+          PY
+
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      - name: Analizar código
+        run: flutter analyze
+
+      - name: Ejecutar pruebas
+        run: flutter test
+
+      - name: Compilar APK release sin artefactos antiguos
+        run: flutter build apk --release --no-shrink --build-name=1.0.0 --build-number=100
+
+      - name: Renombrar APK con versión y ejecución
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/Billares-Don-Miguel-v1.0.0-build100-run${{ github.run_number }}.apk"
+          sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
+
+      - name: Publicar APK actual como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: Billares-Don-Miguel-APK-v1.0.0-build100-run${{ github.run_number }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
