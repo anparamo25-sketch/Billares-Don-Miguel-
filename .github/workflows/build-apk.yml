@@ -89,8 +89,8 @@ jobs:
           dart format lib test
           dart format --output=none --set-exit-if-changed lib test
 
-      - name: Analizar código
-        run: flutter analyze
+      - name: Analizar código sin tolerar errores ni warnings
+        run: flutter analyze --fatal-warnings --no-fatal-infos
 
       - name: Ejecutar pruebas
         run: flutter test
