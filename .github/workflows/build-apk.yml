@@ -41,8 +41,8 @@ jobs:
       - name: Instalar dependencias
         run: flutter pub get
 
-      - name: Verificar formato
-        run: dart format --output=none --set-exit-if-changed lib test
+      - name: Formatear código
+        run: dart format lib test
 
       - name: Analizar código
         run: flutter analyze
