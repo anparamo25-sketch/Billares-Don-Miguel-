@@ -1,16 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:apk_install/apk_install.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_background/flutter_background.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
-const String appVersion = '1.1.0+110';
+const String appVersion = '1.2.0+120';
 const String defaultPassword = '1234';
 const String updateManifestUrl = 'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json';
-const Map<int, double> tableRates = {1: 120, 2: 120, 3: 100, 4: 100, 5: 70};
+const Map<int, double> tableRates = <int, double>{1: 120, 2: 120, 3: 100, 4: 100, 5: 70};
 
 enum TableStatus { available, playing, pending }
 
@@ -41,6 +43,22 @@ class BillTable {
         return 'Pendiente de cobro';
     }
   }
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+        'number': number,
+        'status': status.name,
+        'start': start?.toIso8601String(),
+        'end': end?.toIso8601String(),
+        'amount': amount,
+      };
+
+  void restore(Map<String, dynamic> map) {
+    final String statusName = map['status'] as String? ?? TableStatus.available.name;
+    status = TableStatus.values.firstWhere((TableStatus value) => value.name == statusName, orElse: () => TableStatus.available);
+    start = map['start'] == null ? null : DateTime.tryParse(map['start'] as String);
+    end = map['end'] == null ? null : DateTime.tryParse(map['end'] as String);
+    amount = (map['amount'] as num?)?.toDouble() ?? 0;
+  }
 }
 
 class HistoryEntry {
@@ -51,7 +69,7 @@ class HistoryEntry {
   final int seconds;
   final double amount;
 
-  Map<String, dynamic> toMap() => {
+  Map<String, dynamic> toMap() => <String, dynamic>{
         'table': table,
         'start': start.toIso8601String(),
         'end': end.toIso8601String(),
@@ -72,17 +90,26 @@ void main() => runApp(const BillaresApp());
 
 class BillaresApp extends StatelessWidget {
   const BillaresApp({super.key});
+
   @override
   Widget build(BuildContext context) => MaterialApp(
         debugShowCheckedModeBanner: false,
         title: 'Billares Don Miguel',
-        theme: ThemeData(useMaterial3: true, colorScheme: ColorScheme.fromSeed(seedColor: Colors.green), scaffoldBackgroundColor: const Color(0xfff4f6f5)),
+        theme: ThemeData(
+          useMaterial3: true,
+          brightness: Brightness.dark,
+          scaffoldBackgroundColor: Colors.black,
+          colorScheme: ColorScheme.fromSeed(seedColor: Colors.green, brightness: Brightness.dark),
+          appBarTheme: const AppBarTheme(backgroundColor: Colors.black, foregroundColor: Colors.white),
+          navigationBarTheme: const NavigationBarThemeData(backgroundColor: Color(0xff111111)),
+        ),
         home: const LoginPage(),
       );
 }
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
+
   @override
   State<LoginPage> createState() => _LoginPageState();
 }
@@ -96,25 +123,31 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
-    loadPassword();
+    restoreSession();
   }
 
-  Future<void> loadPassword() async {
+  Future<void> restoreSession() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
+    password = prefs.getString('admin_password') ?? defaultPassword;
+    final bool sessionActive = prefs.getBool('session_active') ?? false;
     if (!mounted) return;
-    setState(() {
-      password = prefs.getString('admin_password') ?? defaultPassword;
-      loading = false;
-    });
+    if (sessionActive) {
+      Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => const DashboardPage()));
+      return;
+    }
+    setState(() => loading = false);
   }
 
-  void login() {
-    if (controller.text == password) {
-      Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => const DashboardPage()));
-    } else {
+  Future<void> login() async {
+    if (controller.text != password) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Contraseña incorrecta')));
       controller.clear();
+      return;
     }
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('session_active', true);
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(builder: (_) => const DashboardPage()));
   }
 
   @override
@@ -131,7 +164,7 @@ class _LoginPageState extends State<LoginPage> {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Card(
-                elevation: 6,
+                color: const Color(0xff151515),
                 child: Padding(
                   padding: const EdgeInsets.all(28),
                   child: loading
@@ -148,7 +181,6 @@ class _LoginPageState extends State<LoginPage> {
                             TextField(
                               controller: controller,
                               obscureText: obscure,
-                              keyboardType: TextInputType.visiblePassword,
                               onSubmitted: (_) => login(),
                               decoration: InputDecoration(
                                 labelText: 'Contraseña',
@@ -177,26 +209,30 @@ class _LoginPageState extends State<LoginPage> {
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
+
   @override
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> {
-  final List<BillTable> tableList = tableRates.entries.map((e) => BillTable(e.key, e.value)).toList();
+class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserver {
+  final List<BillTable> tableList = tableRates.entries.map((MapEntry<int, double> e) => BillTable(e.key, e.value)).toList();
   final TextEditingController newPassword = TextEditingController();
   final TextEditingController confirmPassword = TextEditingController();
-  List<HistoryEntry> history = [];
+  List<HistoryEntry> history = <HistoryEntry>[];
   HttpServer? server;
   Timer? ticker;
   String? lanIp;
   int tab = 0;
   bool checkingUpdate = false;
+  bool backgroundStarted = false;
 
   @override
   void initState() {
     super.initState();
-    loadHistory();
+    WidgetsBinding.instance.addObserver(this);
+    loadData();
     startLanServer();
+    startBackgroundExecution();
     ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
@@ -204,7 +240,34 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !backgroundStarted) {
+      startBackgroundExecution();
+    }
+  }
+
+  Future<void> startBackgroundExecution() async {
+    if (backgroundStarted) return;
+    try {
+      final bool initialized = await FlutterBackground.initialize(
+        androidConfig: const FlutterBackgroundAndroidConfig(
+          notificationTitle: 'Billares Don Miguel',
+          notificationText: 'CENTRAL activo en segundo plano',
+          notificationImportance: AndroidNotificationImportance.low,
+          enableWifiLock: true,
+        ),
+      );
+      if (initialized) {
+        backgroundStarted = await FlutterBackground.enableBackgroundExecution();
+      }
+    } catch (_) {
+      backgroundStarted = false;
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     ticker?.cancel();
     server?.close(force: true);
     newPassword.dispose();
@@ -212,27 +275,45 @@ class _DashboardPageState extends State<DashboardPage> {
     super.dispose();
   }
 
-  Future<void> loadHistory() async {
+  Future<void> loadData() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? raw = prefs.getString('history');
+    final String? rawHistory = prefs.getString('history');
     final DateTime cutoff = DateTime.now().subtract(const Duration(days: 7));
-    List<HistoryEntry> loaded = [];
-    if (raw != null && raw.isNotEmpty) {
+    if (rawHistory != null && rawHistory.isNotEmpty) {
       try {
-        final List<dynamic> data = jsonDecode(raw) as List<dynamic>;
-        loaded = data.map((e) => HistoryEntry.fromMap(Map<String, dynamic>.from(e as Map))).where((e) => e.end.isAfter(cutoff)).toList();
+        final List<dynamic> data = jsonDecode(rawHistory) as List<dynamic>;
+        history = data.map((dynamic item) => HistoryEntry.fromMap(Map<String, dynamic>.from(item as Map))).where((HistoryEntry e) => e.end.isAfter(cutoff)).toList();
       } catch (_) {
-        loaded = [];
+        history = <HistoryEntry>[];
       }
     }
-    history = loaded;
+    final String? rawTables = prefs.getString('tables');
+    if (rawTables != null && rawTables.isNotEmpty) {
+      try {
+        final List<dynamic> data = jsonDecode(rawTables) as List<dynamic>;
+        for (final dynamic item in data) {
+          final Map<String, dynamic> map = Map<String, dynamic>.from(item as Map);
+          final int number = (map['number'] as num).toInt();
+          final BillTable table = tableList.firstWhere((BillTable t) => t.number == number);
+          table.restore(map);
+        }
+      } catch (_) {
+        // Keep the safe default state if persisted table data is damaged.
+      }
+    }
     await saveHistory();
+    await saveTables();
     if (mounted) setState(() {});
   }
 
   Future<void> saveHistory() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString('history', jsonEncode(history.map((e) => e.toMap()).toList()));
+    await prefs.setString('history', jsonEncode(history.map((HistoryEntry e) => e.toMap()).toList()));
+  }
+
+  Future<void> saveTables() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setString('tables', jsonEncode(tableList.map((BillTable t) => t.toMap()).toList()));
   }
 
   Future<void> startLanServer() async {
@@ -251,7 +332,9 @@ class _DashboardPageState extends State<DashboardPage> {
       server!.listen(handleRequest);
       if (mounted) setState(() {});
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo iniciar el servidor LAN en el puerto 8080')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo iniciar el servidor LAN en el puerto 8080')));
+      }
     }
   }
 
@@ -268,11 +351,11 @@ class _DashboardPageState extends State<DashboardPage> {
     await request.response.close();
   }
 
-  Map<String, dynamic> stateMap() => {
+  Map<String, dynamic> stateMap() => <String, dynamic>{
         'app': 'Billares Don Miguel',
         'version': appVersion,
         'time': clock(DateTime.now()),
-        'tables': tableList.map((t) => {
+        'tables': tableList.map((BillTable t) => <String, dynamic>{
               'number': t.number,
               'rate': t.rate,
               'status': t.statusText,
@@ -285,11 +368,11 @@ class _DashboardPageState extends State<DashboardPage> {
 
   String get tvHtml => r'''<!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Billares Don Miguel</title>
-<style>body{margin:0;background:#07120c;color:#fff;font-family:Arial,sans-serif}header{padding:20px;text-align:center;background:#0d2b1b;position:sticky;top:0}h1{margin:0;font-size:30px}.clock{font-size:20px;margin-top:6px;color:#d9f99d}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;padding:22px}.card{border-radius:18px;padding:22px;background:#15251c;border:2px solid #31523e;box-shadow:0 8px 30px #0008}.card.green{background:#123d24;border-color:#36d76b}.card.red{background:#541b1b;border-color:#ff5252}.card.yellow{background:#5a4a08;border-color:#f5c542}.name{font-size:28px;font-weight:800}.status{margin:10px 0;font-size:20px;font-weight:700}.line{margin:8px 0;color:#f0f7f2}.money{font-size:30px;font-weight:800;margin-top:14px}</style></head>
+<style>body{margin:0;background:#000;color:#fff;font-family:Arial,sans-serif}header{padding:20px;text-align:center;background:#050505;position:sticky;top:0;border-bottom:1px solid #222}h1{margin:0;font-size:30px}.clock{font-size:20px;margin-top:6px;color:#d9f99d}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;padding:22px}.card{border-radius:18px;padding:22px;background:#151515;border:2px solid #444;box-shadow:0 8px 30px #000}.card.green{background:#123d24;border-color:#36d76b}.card.red{background:#541b1b;border-color:#ff5252}.card.yellow{background:#5a4a08;border-color:#f5c542}.name{font-size:28px;font-weight:800}.status{margin:10px 0;font-size:20px;font-weight:700}.line{margin:8px 0;color:#f0f7f2}.money{font-size:30px;font-weight:800;margin-top:14px}</style></head>
 <body><header><h1>BILLARES DON MIGUEL</h1><div id="clock" class="clock">Conectando...</div></header><main id="grid" class="grid"></main>
 <script>function money(n){return 'C$ '+Number(n).toFixed(2)}function render(d){document.getElementById('clock').textContent=d.time;document.getElementById('grid').innerHTML=d.tables.map(function(t){var c=t.status==='Disponible'?'green':t.status==='En juego'?'red':'yellow';return '<section class="card '+c+'"><div class="name">Mesa '+t.number+'</div><div class="status">'+t.status+'</div><div class="line">Inicio: '+(t.start||'—')+'</div><div class="line">Finalización: '+(t.end||'—')+'</div><div class="line">Tiempo jugado: '+t.elapsed+'</div><div class="money">'+money(t.amount)+'</div></section>'}).join('')}async function tick(){try{var r=await fetch('/api/state?x='+Date.now());render(await r.json())}catch(e){document.getElementById('clock').textContent='Sin conexión con CENTRAL'}}tick();setInterval(tick,1000)</script></body></html>''';
 
-  void startGame(BillTable table) {
+  Future<void> startGame(BillTable table) async {
     if (table.status != TableStatus.available) return;
     setState(() {
       table.status = TableStatus.playing;
@@ -297,15 +380,17 @@ class _DashboardPageState extends State<DashboardPage> {
       table.end = null;
       table.amount = 0;
     });
+    await saveTables();
   }
 
-  void finishGame(BillTable table) {
+  Future<void> finishGame(BillTable table) async {
     if (table.status != TableStatus.playing) return;
     setState(() {
       table.end = DateTime.now();
       table.amount = table.liveAmount;
       table.status = TableStatus.pending;
     });
+    await saveTables();
   }
 
   Future<void> collect(BillTable table) async {
@@ -319,17 +404,47 @@ class _DashboardPageState extends State<DashboardPage> {
       table.amount = 0;
     });
     await saveHistory();
+    await saveTables();
   }
 
-  Future<void> openTv() async {
+  Future<void> showTvConnection() async {
     if (lanIp == null) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Esperando la conexión LAN de CENTRAL...')));
       return;
     }
-    final Uri uri = Uri.parse('http://$lanIp:8080/tv');
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir la pantalla del TV')));
-    }
+    final String url = 'http://$lanIp:8080/tv';
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Conectar televisor'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const Text('El botón anterior abría el navegador del mismo dispositivo. Esta versión ya no hace eso.'),
+            const SizedBox(height: 12),
+            const Text('En el navegador del televisor, conectado a la misma Wi‑Fi, abre esta dirección:'),
+            const SizedBox(height: 12),
+            SelectableText(url, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: url));
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dirección de TV copiada')));
+              },
+              icon: const Icon(Icons.copy),
+              label: const Text('Copiar dirección'),
+            ),
+            const SizedBox(height: 8),
+            const Text('Una vez abierta, la TV queda conectada a CENTRAL y se actualiza automáticamente cada segundo.'),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+        ],
+      ),
+    );
   }
 
   int buildNumber(String version) {
@@ -338,11 +453,10 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> checkForUpdate({bool showNoUpdate = true}) async {
-    if (checkingUpdate) return;
+    if (checkingUpdate || !mounted) return;
     setState(() => checkingUpdate = true);
     try {
-      final HttpClient client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 8);
+      final HttpClient client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
       final HttpClientRequest request = await client.getUrl(Uri.parse('$updateManifestUrl?x=${DateTime.now().millisecondsSinceEpoch}'));
       request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
       final HttpClientResponse response = await request.close();
@@ -350,7 +464,7 @@ class _DashboardPageState extends State<DashboardPage> {
       final Map<String, dynamic> manifest = jsonDecode(await response.transform(utf8.decoder).join()) as Map<String, dynamic>;
       client.close(force: true);
       final String latestVersion = manifest['version'] as String? ?? appVersion;
-      final String? downloadUrl = manifest['apk_url'] as String?;
+      final String? downloadUrl = (manifest['downloadUrl'] ?? manifest['apk_url']) as String?;
       if (buildNumber(latestVersion) <= buildNumber(appVersion) || downloadUrl == null || downloadUrl.isEmpty) {
         if (showNoUpdate && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('La aplicación ya está actualizada')));
         return;
@@ -358,9 +472,9 @@ class _DashboardPageState extends State<DashboardPage> {
       if (!mounted) return;
       final bool? install = await showDialog<bool>(
         context: context,
-        builder: (_) => AlertDialog(
+        builder: (BuildContext context) => AlertDialog(
           title: const Text('Nueva actualización disponible'),
-          content: Text('Hay una nueva versión ($latestVersion). La aplicación puede descargarla e iniciar la instalación. Android puede pedir autorización para instalar actualizaciones desde esta fuente.'),
+          content: Text('Hay una nueva versión ($latestVersion). ¿Deseas actualizar ahora?'),
           actions: <Widget>[
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Más tarde')),
             FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Actualizar ahora')),
@@ -381,8 +495,7 @@ class _DashboardPageState extends State<DashboardPage> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Descargando actualización...')));
       final Directory directory = await getApplicationDocumentsDirectory();
       final String path = '${directory.path}/billares-don-miguel-update.apk';
-      final HttpClient client = HttpClient();
-      client.connectionTimeout = const Duration(seconds: 20);
+      final HttpClient client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
       final HttpClientResponse response = await (await client.getUrl(Uri.parse(url))).close();
       if (response.statusCode != 200) throw const HttpException('Descarga fallida');
       final File file = File(path);
@@ -391,10 +504,6 @@ class _DashboardPageState extends State<DashboardPage> {
       await sink.flush();
       await sink.close();
       client.close(force: true);
-      final dynamic permission = await ApkInstall().onCheckInstallApkPermission();
-      if (permission == false && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Android necesita permiso para instalar la actualización desde esta fuente.')));
-      }
       await ApkInstall().onInstallApk(path);
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo descargar o iniciar la instalación de la actualización.')));
@@ -406,7 +515,7 @@ class _DashboardPageState extends State<DashboardPage> {
     confirmPassword.clear();
     final bool? saved = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (BuildContext context) => AlertDialog(
         title: const Text('Cambiar contraseña'),
         content: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[
           TextField(controller: newPassword, obscureText: true, decoration: const InputDecoration(labelText: 'Nueva contraseña')),
@@ -426,6 +535,13 @@ class _DashboardPageState extends State<DashboardPage> {
     } else if (saved == false && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Las contraseñas no coinciden o están vacías')));
     }
+  }
+
+  Future<void> logout() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('session_active', false);
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute<void>(builder: (_) => const LoginPage()), (_) => false);
   }
 
   String clock(DateTime value) {
@@ -448,7 +564,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   double get todayTotal {
     final DateTime now = DateTime.now();
-    return history.where((e) => e.end.year == now.year && e.end.month == now.month && e.end.day == now.day).fold<double>(0, (total, e) => total + e.amount);
+    return history.where((HistoryEntry e) => e.end.year == now.year && e.end.month == now.month && e.end.day == now.day).fold<double>(0, (double total, HistoryEntry e) => total + e.amount);
   }
 
   Color statusColor(TableStatus status) {
@@ -476,7 +592,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget tableCard(BillTable table) {
     final double amount = table.status == TableStatus.playing ? table.liveAmount : table.amount;
     final String buttonText = table.status == TableStatus.available ? 'Iniciar' : table.status == TableStatus.playing ? 'Finalizar' : 'Cobrar';
-    final VoidCallback action = table.status == TableStatus.available ? () => startGame(table) : table.status == TableStatus.playing ? () => finishGame(table) : () => collect(table);
+    final Future<void> Function() action = table.status == TableStatus.available ? () => startGame(table) : table.status == TableStatus.playing ? () => finishGame(table) : () => collect(table);
     return Card(
       elevation: 3,
       color: statusColor(table.status),
@@ -512,18 +628,18 @@ class _DashboardPageState extends State<DashboardPage> {
           const SizedBox(height: 8),
           if (lanIp != null) Text('TV: http://$lanIp:8080/tv', style: const TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 10),
-          SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: openTv, icon: const Icon(Icons.tv), label: const Text('Enviar pantalla al televisor'))),
+          SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: showTvConnection, icon: const Icon(Icons.tv), label: const Text('Conectar televisor'))),
           const SizedBox(height: 12),
           Expanded(child: GridView.builder(
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 460, mainAxisExtent: 330, crossAxisSpacing: 14, mainAxisSpacing: 14),
             itemCount: tableList.length,
-            itemBuilder: (_, index) => tableCard(tableList[index]),
+            itemBuilder: (_, int index) => tableCard(tableList[index]),
           )),
         ]),
       );
 
   Widget historyPage() {
-    final List<HistoryEntry> items = List<HistoryEntry>.from(history)..sort((a, b) => b.end.compareTo(a.end));
+    final List<HistoryEntry> items = List<HistoryEntry>.from(history)..sort((HistoryEntry a, HistoryEntry b) => b.end.compareTo(a.end));
     return Column(children: <Widget>[
       Card(margin: const EdgeInsets.fromLTRB(16, 16, 16, 8), child: ListTile(leading: const Icon(Icons.today), title: const Text('Total de hoy'), trailing: Text(money(todayTotal), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)))),
       Expanded(child: items.isEmpty
@@ -531,7 +647,7 @@ class _DashboardPageState extends State<DashboardPage> {
           : ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: items.length,
-              itemBuilder: (_, index) {
+              itemBuilder: (_, int index) {
                 final HistoryEntry e = items[index];
                 return Card(child: ListTile(leading: CircleAvatar(child: Text('${e.table}')), title: Text('Mesa ${e.table} • ${money(e.amount)}'), subtitle: Text('${date(e.end)} • ${clock(e.start)} - ${clock(e.end)} • ${duration(e.seconds)}')));
               },
@@ -542,7 +658,7 @@ class _DashboardPageState extends State<DashboardPage> {
   void showSettings() {
     showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (BuildContext context) => AlertDialog(
         title: const Text('Configuración'),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
           const Text('Tarifas fijas', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -571,13 +687,13 @@ class _DashboardPageState extends State<DashboardPage> {
           actions: <Widget>[
             if (checkingUpdate) const Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))),
             IconButton(tooltip: 'Configuración', onPressed: showSettings, icon: const Icon(Icons.settings_outlined)),
-            IconButton(tooltip: 'Cerrar sesión', onPressed: () => Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute<void>(builder: (_) => const LoginPage()), (_) => false), icon: const Icon(Icons.logout)),
+            IconButton(tooltip: 'Cerrar sesión', onPressed: logout, icon: const Icon(Icons.logout)),
           ],
         ),
         body: tab == 0 ? dashboard() : historyPage(),
         bottomNavigationBar: NavigationBar(
           selectedIndex: tab,
-          onDestinationSelected: (index) => setState(() => tab = index),
+          onDestinationSelected: (int index) => setState(() => tab = index),
           destinations: const <NavigationDestination>[
             NavigationDestination(icon: Icon(Icons.table_restaurant), label: 'Mesas'),
             NavigationDestination(icon: Icon(Icons.history), label: 'Historial'),
