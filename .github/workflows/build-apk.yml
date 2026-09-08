@@ -150,13 +150,13 @@ jobs:
           s = Path('lib/main.dart').read_text()
           required = [
               "const String appVersion = '1.2.3+123';",
-              'github.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json',
+              'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json',
               "client.userAgent = 'Billares-Don-Miguel/1.2.3';",
           ]
           missing = [item for item in required if item not in s]
           if missing:
               raise SystemExit('ERROR: configuración de actualización incompleta: ' + repr(missing))
-          print('Comprobador preparado para la versión 1.2.3+123')
+          print('Configuración de actualización verificada correctamente para 1.2.3+123')
           PY
 
       - name: Compilar APK release
