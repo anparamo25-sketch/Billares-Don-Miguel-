@@ -9,7 +9,7 @@ import 'package:flutter_background/flutter_background.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const String appVersion = '1.2.0+120';
+const String appVersion = '1.2.1+121';
 const String defaultPassword = '1234';
 const String updateManifestUrl = 'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json';
 const Map<int, double> tableRates = <int, double>{1: 120, 2: 120, 3: 100, 4: 100, 5: 70};
@@ -455,14 +455,14 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   Future<void> checkForUpdate({bool showNoUpdate = true}) async {
     if (checkingUpdate || !mounted) return;
     setState(() => checkingUpdate = true);
+    HttpClient? client;
     try {
-      final HttpClient client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
       final HttpClientRequest request = await client.getUrl(Uri.parse('$updateManifestUrl?x=${DateTime.now().millisecondsSinceEpoch}'));
       request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
       final HttpClientResponse response = await request.close();
       if (response.statusCode != 200) throw const HttpException('Manifest no disponible');
       final Map<String, dynamic> manifest = jsonDecode(await response.transform(utf8.decoder).join()) as Map<String, dynamic>;
-      client.close(force: true);
       final String latestVersion = manifest['version'] as String? ?? appVersion;
       final String? downloadUrl = (manifest['downloadUrl'] ?? manifest['apk_url']) as String?;
       if (buildNumber(latestVersion) <= buildNumber(appVersion) || downloadUrl == null || downloadUrl.isEmpty) {
@@ -485,17 +485,19 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     } catch (_) {
       if (showNoUpdate && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo comprobar la actualización. La aplicación continúa funcionando normalmente.')));
     } finally {
+      client?.close(force: true);
       if (mounted) setState(() => checkingUpdate = false);
     }
   }
 
   Future<void> downloadAndInstall(String url) async {
+    HttpClient? client;
     try {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Descargando actualización...')));
       final Directory directory = await getApplicationDocumentsDirectory();
       final String path = '${directory.path}/billares-don-miguel-update.apk';
-      final HttpClient client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
       final HttpClientResponse response = await (await client.getUrl(Uri.parse(url))).close();
       if (response.statusCode != 200) throw const HttpException('Descarga fallida');
       final File file = File(path);
@@ -503,10 +505,11 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       await response.pipe(sink);
       await sink.flush();
       await sink.close();
-      client.close(force: true);
       await ApkInstall().onInstallApk(path);
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo descargar o iniciar la instalación de la actualización.')));
+    } finally {
+      client?.close(force: true);
     }
   }
 
@@ -558,146 +561,3 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     final int m = (seconds % 3600) ~/ 60;
     final int s = seconds % 60;
     return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-  }
-
-  String money(double value) => 'C\$${value.toStringAsFixed(2)}';
-
-  double get todayTotal {
-    final DateTime now = DateTime.now();
-    return history.where((HistoryEntry e) => e.end.year == now.year && e.end.month == now.month && e.end.day == now.day).fold<double>(0, (double total, HistoryEntry e) => total + e.amount);
-  }
-
-  Color statusColor(TableStatus status) {
-    switch (status) {
-      case TableStatus.available:
-        return Colors.green.shade100;
-      case TableStatus.playing:
-        return Colors.red.shade100;
-      case TableStatus.pending:
-        return Colors.yellow.shade200;
-    }
-  }
-
-  Color statusTextColor(TableStatus status) {
-    switch (status) {
-      case TableStatus.available:
-        return Colors.green.shade900;
-      case TableStatus.playing:
-        return Colors.red.shade900;
-      case TableStatus.pending:
-        return Colors.orange.shade900;
-    }
-  }
-
-  Widget tableCard(BillTable table) {
-    final double amount = table.status == TableStatus.playing ? table.liveAmount : table.amount;
-    final String buttonText = table.status == TableStatus.available ? 'Iniciar' : table.status == TableStatus.playing ? 'Finalizar' : 'Cobrar';
-    final Future<void> Function() action = table.status == TableStatus.available ? () => startGame(table) : table.status == TableStatus.playing ? () => finishGame(table) : () => collect(table);
-    return Card(
-      elevation: 3,
-      color: statusColor(table.status),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-          Row(children: <Widget>[
-            Expanded(child: Text('Mesa ${table.number}', style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold, color: statusTextColor(table.status)))),
-            Chip(label: Text(table.statusText, style: TextStyle(color: statusTextColor(table.status))), avatar: CircleAvatar(backgroundColor: statusTextColor(table.status), radius: 6)),
-          ]),
-          Divider(color: statusTextColor(table.status).withValues(alpha: 0.35)),
-          Text('Tarifa fija: ${money(table.rate)} / hora', style: TextStyle(color: statusTextColor(table.status))),
-          const SizedBox(height: 8),
-          Text('Inicio: ${table.start == null ? '—' : clock(table.start!)}', style: TextStyle(color: statusTextColor(table.status))),
-          Text('Finalización: ${table.end == null ? '—' : clock(table.end!)}', style: TextStyle(color: statusTextColor(table.status))),
-          Text('Tiempo jugado: ${duration(table.elapsedSeconds)}', style: TextStyle(color: statusTextColor(table.status))),
-          const SizedBox(height: 8),
-          Text(money(amount), style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: statusTextColor(table.status))),
-          const SizedBox(height: 12),
-          SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: action, icon: Icon(table.status == TableStatus.playing ? Icons.stop : Icons.play_arrow), label: Text(buttonText))),
-        ]),
-      ),
-    );
-  }
-
-  Widget dashboard() => Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-          Row(children: <Widget>[
-            Expanded(child: Text('Estado de mesas', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold))),
-            if (lanIp != null) Chip(label: Text('LAN: $lanIp:8080')),
-          ]),
-          const SizedBox(height: 8),
-          if (lanIp != null) Text('TV: http://$lanIp:8080/tv', style: const TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 10),
-          SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: showTvConnection, icon: const Icon(Icons.tv), label: const Text('Conectar televisor'))),
-          const SizedBox(height: 12),
-          Expanded(child: GridView.builder(
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 460, mainAxisExtent: 330, crossAxisSpacing: 14, mainAxisSpacing: 14),
-            itemCount: tableList.length,
-            itemBuilder: (_, int index) => tableCard(tableList[index]),
-          )),
-        ]),
-      );
-
-  Widget historyPage() {
-    final List<HistoryEntry> items = List<HistoryEntry>.from(history)..sort((HistoryEntry a, HistoryEntry b) => b.end.compareTo(a.end));
-    return Column(children: <Widget>[
-      Card(margin: const EdgeInsets.fromLTRB(16, 16, 16, 8), child: ListTile(leading: const Icon(Icons.today), title: const Text('Total de hoy'), trailing: Text(money(todayTotal), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)))),
-      Expanded(child: items.isEmpty
-          ? const Center(child: Text('No hay movimientos en los últimos 7 días.'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: items.length,
-              itemBuilder: (_, int index) {
-                final HistoryEntry e = items[index];
-                return Card(child: ListTile(leading: CircleAvatar(child: Text('${e.table}')), title: Text('Mesa ${e.table} • ${money(e.amount)}'), subtitle: Text('${date(e.end)} • ${clock(e.start)} - ${clock(e.end)} • ${duration(e.seconds)}')));
-              },
-            )),
-    ]);
-  }
-
-  void showSettings() {
-    showDialog<void>(
-      context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('Configuración'),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-          const Text('Tarifas fijas', style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          const Text('Mesas 1 y 2: C\$120 por hora'),
-          const Text('Mesas 3 y 4: C\$100 por hora'),
-          const Text('Mesa 5: C\$70 por hora'),
-          const SizedBox(height: 12),
-          const Text('Las tarifas no pueden modificarse desde el administrador.'),
-          const SizedBox(height: 16),
-          if (lanIp != null) Text('Servidor LAN: http://$lanIp:8080/tv'),
-        ]),
-        actions: <Widget>[
-          TextButton(onPressed: changePassword, child: const Text('Cambiar contraseña')),
-          TextButton(onPressed: () => checkForUpdate(), child: const Text('Buscar actualización')),
-          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(
-          title: const Text('Billares Don Miguel', style: TextStyle(fontWeight: FontWeight.bold)),
-          actions: <Widget>[
-            if (checkingUpdate) const Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))),
-            IconButton(tooltip: 'Configuración', onPressed: showSettings, icon: const Icon(Icons.settings_outlined)),
-            IconButton(tooltip: 'Cerrar sesión', onPressed: logout, icon: const Icon(Icons.logout)),
-          ],
-        ),
-        body: tab == 0 ? dashboard() : historyPage(),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: tab,
-          onDestinationSelected: (int index) => setState(() => tab = index),
-          destinations: const <NavigationDestination>[
-            NavigationDestination(icon: Icon(Icons.table_restaurant), label: 'Mesas'),
-            NavigationDestination(icon: Icon(Icons.history), label: 'Historial'),
-          ],
-        ),
-      );
-}
