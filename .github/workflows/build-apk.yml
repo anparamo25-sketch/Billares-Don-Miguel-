@@ -62,7 +62,6 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           gradle = Path('android/app/build.gradle.kts')
           s = gradle.read_text()
           s = s.replace('compileSdk = flutter.compileSdkVersion', 'compileSdk = 36')
@@ -101,15 +100,19 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import os
           import re
           path = Path('lib/main.dart')
           s = path.read_text()
+          build_name = os.environ['BUILD_NAME']
+          build_number = os.environ['BUILD_NUMBER']
+          version = f'{build_name}+{build_number}'
           s = s.replace('AndroidNotificationImportance.low', 'AndroidNotificationImportance.normal')
-          s = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '${BUILD_NAME}+${BUILD_NUMBER}';", s, count=1)
+          s = re.sub(r"const String appVersion = '[^']+';", f"const String appVersion = '{version}';", s, count=1)
           s = re.sub(r"const String updateManifestUrl = '[^']+';", "const String updateManifestUrl = 'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json';", s, count=1)
           s = s.replace(
               "client = HttpClient()..connectionTimeout = const Duration(seconds: 8);",
-              "client = HttpClient()..connectionTimeout = const Duration(seconds: 12);\n      client.userAgent = 'Billares-Don-Miguel/${BUILD_NAME}';"
+              f"client = HttpClient()..connectionTimeout = const Duration(seconds: 12);\n      client.userAgent = 'Billares-Don-Miguel/{build_name}';"
           )
           path.write_text(s)
           PY
