@@ -12,8 +12,8 @@ permissions:
 
 env:
   FLUTTER_VERSION: 3.29.3
-  BUILD_NAME: 1.2.2
-  BUILD_NUMBER: 122
+  BUILD_NAME: 1.2.3
+  BUILD_NUMBER: 123
   MIN_SDK: 23
   COMPILE_SDK: 36
   NDK_VERSION: 27.0.12077973
@@ -101,14 +101,15 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           path = Path('lib/main.dart')
           s = path.read_text()
           s = s.replace('AndroidNotificationImportance.low', 'AndroidNotificationImportance.normal')
-          s = s.replace("const String appVersion = '1.2.1+121';", "const String appVersion = '1.2.2+122';")
-          s = s.replace("const String updateManifestUrl = 'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json';", "const String updateManifestUrl = 'https://github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json';")
+          s = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '${BUILD_NAME}+${BUILD_NUMBER}';", s, count=1)
+          s = re.sub(r"const String updateManifestUrl = '[^']+';", "const String updateManifestUrl = 'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json';", s, count=1)
           s = s.replace(
               "client = HttpClient()..connectionTimeout = const Duration(seconds: 8);",
-              "client = HttpClient()..connectionTimeout = const Duration(seconds: 12);\n      client.userAgent = 'Billares-Don-Miguel/1.2.2';"
+              "client = HttpClient()..connectionTimeout = const Duration(seconds: 12);\n      client.userAgent = 'Billares-Don-Miguel/${BUILD_NAME}';"
           )
           path.write_text(s)
           PY
@@ -137,10 +138,10 @@ jobs:
 
       - name: Verificar actualización
         run: |
-          grep -q "appVersion = '1.2.2+122'" lib/main.dart
-          grep -q 'github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json' lib/main.dart
-          grep -q "client.userAgent = 'Billares-Don-Miguel/1.2.2'" lib/main.dart
-          echo "Comprobador preparado para la versión 1.2.2+122"
+          grep -q "appVersion = '${BUILD_NAME}+${BUILD_NUMBER}'" lib/main.dart
+          grep -q 'github.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json' lib/main.dart
+          grep -q "client.userAgent = 'Billares-Don-Miguel/${BUILD_NAME}'" lib/main.dart
+          echo "Comprobador preparado para la versión ${BUILD_NAME}+${BUILD_NUMBER}"
 
       - name: Compilar APK release
         run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
