@@ -10,8 +10,8 @@ permissions:
 
 env:
   FLUTTER_VERSION: 3.29.3
-  BUILD_NAME: 1.1.0
-  BUILD_NUMBER: 110
+  BUILD_NAME: 1.2.0
+  BUILD_NUMBER: 120
   MIN_SDK: 23
   COMPILE_SDK: 36
   NDK_VERSION: 27.0.12077973
@@ -53,7 +53,7 @@ jobs:
       - name: Generar plataforma Android limpia
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
 
-      - name: Configurar Android para LAN, actualizaciones y compatibilidad
+      - name: Configurar Android para LAN, actualizaciones, segundo plano y compatibilidad
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -73,11 +73,19 @@ jobs:
                   '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
                   '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'
                   '    <uses-permission android:name="android.permission.INTERNET" />\n'
-                  '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />'
+                  '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n'
+                  '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n'
+                  '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />'
               )
           if 'android:usesCleartextTraffic=' not in s:
               s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
           s = s.replace('android:label="billares_don_miguel"', 'android:label="Billares Don Miguel"')
+          service = '''    <service
+                android:name="de.julianassmann.flutter_background.IsolateHolderService"
+                android:exported="false"
+                android:foregroundServiceType="specialUse" />'''
+          if 'de.julianassmann.flutter_background.IsolateHolderService' not in s:
+              s = s.replace('    </application>', service + '\n    </application>')
           manifest.write_text(s)
           PY
 
@@ -101,7 +109,9 @@ jobs:
           grep -q 'ndkVersion = "27.0.12077973"' android/app/build.gradle.kts
           grep -q 'minSdk = 23' android/app/build.gradle.kts
           grep -q 'REQUEST_INSTALL_PACKAGES' android/app/src/main/AndroidManifest.xml
-          echo "Configuración Android verificada: compileSdk 36, NDK 27, minSdk 23"
+          grep -q 'FOREGROUND_SERVICE_SPECIAL_USE' android/app/src/main/AndroidManifest.xml
+          grep -q 'de.julianassmann.flutter_background.IsolateHolderService' android/app/src/main/AndroidManifest.xml
+          echo "Configuración Android verificada: compileSdk 36, NDK 27, minSdk 23 y servicio de segundo plano"
 
       - name: Compilar APK release
         run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
