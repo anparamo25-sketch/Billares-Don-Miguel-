@@ -92,6 +92,17 @@ jobs:
       - name: Instalar dependencias
         run: flutter pub get
 
+      - name: Corregir compatibilidad del plugin y aplicar correcciones Dart
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('lib/main.dart')
+          s = path.read_text()
+          s = s.replace('AndroidNotificationImportance.low', 'AndroidNotificationImportance.normal')
+          path.write_text(s)
+          PY
+          dart fix --apply
+
       - name: Formatear y verificar código
         run: |
           dart format lib test
