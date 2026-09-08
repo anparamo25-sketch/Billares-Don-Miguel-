@@ -99,6 +99,7 @@ jobs:
           path = Path('lib/main.dart')
           s = path.read_text()
           s = s.replace('AndroidNotificationImportance.low', 'AndroidNotificationImportance.normal')
+          s = s.replace('https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json', 'https://raw.githubusercontent.com/anparamo25-sketch/Sistema-billar-mesas/main/update.json')
           path.write_text(s)
           PY
           dart fix --apply
