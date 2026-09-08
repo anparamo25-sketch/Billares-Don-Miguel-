@@ -25,6 +25,9 @@ jobs:
     steps:
       - name: Checkout código actual
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
 
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
@@ -137,19 +140,52 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk "dist/Billares-Don-Miguel-latest.apk"
           sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
 
-      - name: Actualizar manifiesto público de actualización
+      - name: Actualizar manifiesto público de actualización sin conflictos
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          cat > update.json <<EOF
+          set -euo pipefail
+          cat > /tmp/update.json <<EOF
           {
             "version": "${BUILD_NAME}+${BUILD_NUMBER}",
             "downloadUrl": "https://github.com/anparamo25-sketch/Billares-Don-Miguel-/releases/latest/download/Billares-Don-Miguel-latest.apk"
           }
           EOF
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add update.json
-          git diff --cached --quiet || git commit -m "chore: publish update manifest ${BUILD_NAME}+${BUILD_NUMBER}"
-          git push
+
+          # El workflow puede empezar desde un commit que ya quedó atrás si otro
+          # cambio llegó a main mientras el APK se estaba compilando. Reintentamos
+          # fetch/rebase/push para evitar el fallo non-fast-forward.
+          for attempt in 1 2 3 4 5; do
+            echo "Publicación de update.json: intento ${attempt}/5"
+            git fetch origin main
+            git checkout -B main origin/main
+            cp /tmp/update.json update.json
+            git add update.json
+
+            if git diff --cached --quiet; then
+              echo "update.json ya contiene la versión ${BUILD_NAME}+${BUILD_NUMBER}."
+              break
+            fi
+
+            git commit -m "chore: publish update manifest ${BUILD_NAME}+${BUILD_NUMBER}"
+
+            if git push origin HEAD:main; then
+              echo "update.json publicado correctamente."
+              break
+            fi
+
+            echo "Push rechazado por cambios concurrentes; se vuelve a sincronizar."
+            git reset --hard origin/main
+            if [ "$attempt" -eq 5 ]; then
+              echo "ERROR: no fue posible publicar update.json después de 5 intentos."
+              exit 1
+            fi
+            sleep 2
+          done
 
       - name: Publicar APK como artefacto
         uses: actions/upload-artifact@v4
