@@ -29,33 +29,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Recuperar fuente íntegra y conservar funciones
-        shell: bash
-        run: |
-          set -euo pipefail
-          BASE_COMMIT="878a93681081d6c2053c1b829add3ca9decf7367"
-          git show "${BASE_COMMIT}:lib/main.dart" > lib/main.dart
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('lib/main.dart')
-          s = p.read_text()
-          s = s.replace("const String appVersion = '1.2.1+121';", "const String appVersion = '1.2.3+123';")
-          s = s.replace("AndroidNotificationImportance.low", "AndroidNotificationImportance.normal")
-          s = s.replace("client = HttpClient()..connectionTimeout = const Duration(seconds: 8);", "client = HttpClient()..connectionTimeout = const Duration(seconds: 12);\n      client.userAgent = 'Billares-Don-Miguel/1.2.3';")
-          p.write_text(s)
-          PY
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add lib/main.dart
-          if git diff --cached --quiet; then
-            echo "La fuente ya está restaurada."
-          else
-            git commit -m "fix: restaurar main.dart completo y versión 1.2.3"
-            git push origin HEAD:main
-            echo "Fuente restaurada y publicada. Esta ejecución se detendrá para que la nueva ejecución compile desde el commit limpio."
-            exit 0
-          fi
-
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
