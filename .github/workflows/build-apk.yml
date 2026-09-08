@@ -3,6 +3,8 @@ name: Billares Don Miguel - Build APK
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - update.json
   workflow_dispatch:
 
 permissions:
@@ -10,8 +12,8 @@ permissions:
 
 env:
   FLUTTER_VERSION: 3.29.3
-  BUILD_NAME: 1.2.0
-  BUILD_NUMBER: 120
+  BUILD_NAME: 1.2.1
+  BUILD_NUMBER: 121
   MIN_SDK: 23
   COMPILE_SDK: 36
   NDK_VERSION: 27.0.12077973
@@ -92,14 +94,13 @@ jobs:
       - name: Instalar dependencias
         run: flutter pub get
 
-      - name: Corregir compatibilidad del plugin y aplicar correcciones Dart
+      - name: Corregir compatibilidad del plugin
         run: |
           python3 - <<'PY'
           from pathlib import Path
           path = Path('lib/main.dart')
           s = path.read_text()
           s = s.replace('AndroidNotificationImportance.low', 'AndroidNotificationImportance.normal')
-          s = s.replace('https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json', 'https://raw.githubusercontent.com/anparamo25-sketch/Sistema-billar-mesas/main/update.json')
           path.write_text(s)
           PY
           dart fix --apply
@@ -135,6 +136,20 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk "dist/Billares-Don-Miguel-v${BUILD_NAME}-build${BUILD_NUMBER}-run${{ github.run_number }}.apk"
           cp build/app/outputs/flutter-apk/app-release.apk "dist/Billares-Don-Miguel-latest.apk"
           sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
+
+      - name: Actualizar manifiesto público de actualización
+        run: |
+          cat > update.json <<EOF
+          {
+            "version": "${BUILD_NAME}+${BUILD_NUMBER}",
+            "downloadUrl": "https://github.com/anparamo25-sketch/Billares-Don-Miguel-/releases/latest/download/Billares-Don-Miguel-latest.apk"
+          }
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add update.json
+          git diff --cached --quiet || git commit -m "chore: publish update manifest ${BUILD_NAME}+${BUILD_NUMBER}"
+          git push
 
       - name: Publicar APK como artefacto
         uses: actions/upload-artifact@v4
