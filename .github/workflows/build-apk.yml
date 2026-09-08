@@ -56,7 +56,10 @@ jobs:
           sdkmanager "platforms;android-${COMPILE_SDK}" "build-tools;36.0.0" "ndk;${NDK_VERSION}"
 
       - name: Generar plataforma Android limpia
-        run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
+        run: |
+          flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
+          git checkout -- lib/main.dart test/widget_test.dart
+          echo "Código Dart original restaurado después de flutter create."
 
       - name: Configurar Android para LAN, actualizaciones, segundo plano y compatibilidad
         run: |
@@ -105,12 +108,16 @@ jobs:
           s = path.read_text()
           version = '1.2.3+123'
           s = s.replace('AndroidNotificationImportance.low', 'AndroidNotificationImportance.normal')
-          s = re.sub(r"const String appVersion = '[^']+';", f"const String appVersion = '{version}';", s, count=1)
-          s = re.sub(r"const String updateManifestUrl = '[^']+';", "const String updateManifestUrl = 'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json';", s, count=1)
-          s = s.replace(
-              "client = HttpClient()..connectionTimeout = const Duration(seconds: 8);",
-              "client = HttpClient()..connectionTimeout = const Duration(seconds: 12);\n      client.userAgent = 'Billares-Don-Miguel/1.2.3';"
-          )
+          s, version_count = re.subn(r"const String appVersion = '[^']+';", f"const String appVersion = '{version}';", s, count=1)
+          s, url_count = re.subn(r"const String updateManifestUrl = '[^']+';", "const String updateManifestUrl = 'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json';", s, count=1)
+          if version_count != 1 or url_count != 1:
+              raise SystemExit(f'ERROR: no se pudo preparar main.dart (version_count={version_count}, url_count={url_count})')
+          old = "client = HttpClient()..connectionTimeout = const Duration(seconds: 8);"
+          new = "client = HttpClient()..connectionTimeout = const Duration(seconds: 12);\n      client.userAgent = 'Billares-Don-Miguel/1.2.3';"
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif "client.userAgent = 'Billares-Don-Miguel/1.2.3';" not in s:
+              raise SystemExit('ERROR: no se encontró la configuración HttpClient esperada')
           path.write_text(s)
           PY
           dart fix --apply
@@ -138,10 +145,19 @@ jobs:
 
       - name: Verificar actualización
         run: |
-          grep -q "appVersion = '1.2.3+123'" lib/main.dart
-          grep -q 'github.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json' lib/main.dart
-          grep -q "client.userAgent = 'Billares-Don-Miguel/1.2.3'" lib/main.dart
-          echo "Comprobador preparado para la versión 1.2.3+123"
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('lib/main.dart').read_text()
+          required = [
+              "const String appVersion = '1.2.3+123';",
+              'github.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json',
+              "client.userAgent = 'Billares-Don-Miguel/1.2.3';",
+          ]
+          missing = [item for item in required if item not in s]
+          if missing:
+              raise SystemExit('ERROR: configuración de actualización incompleta: ' + repr(missing))
+          print('Comprobador preparado para la versión 1.2.3+123')
+          PY
 
       - name: Compilar APK release
         run: flutter build apk --release --no-shrink --build-name=1.2.3 --build-number=123
