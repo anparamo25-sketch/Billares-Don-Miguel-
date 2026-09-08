@@ -32,7 +32,21 @@ jobs:
           cache: true
 
       - name: Preparar SDK y NDK de Android
+        shell: bash
         run: |
+          set -euo pipefail
+          if [ -n "${ANDROID_HOME:-}" ]; then
+            export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/platform-tools:$PATH"
+          fi
+          if ! command -v sdkmanager >/dev/null 2>&1; then
+            SDKMANAGER="$(find "${ANDROID_HOME:-/opt/android-sdk}" /usr/local/lib/android/sdk /opt/hostedtoolcache -type f -name sdkmanager 2>/dev/null | head -n 1 || true)"
+            if [ -z "$SDKMANAGER" ]; then
+              echo "ERROR: No se encontró sdkmanager en el runner de GitHub."
+              exit 1
+            fi
+            export PATH="$(dirname "$SDKMANAGER"):$PATH"
+          fi
+          echo "sdkmanager: $(command -v sdkmanager)"
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-${COMPILE_SDK}" "build-tools;36.0.0" "ndk;${NDK_VERSION}"
 
@@ -70,8 +84,10 @@ jobs:
       - name: Instalar dependencias
         run: flutter pub get
 
-      - name: Verificar formato
-        run: dart format --output=none --set-exit-if-changed lib test
+      - name: Formatear y verificar código
+        run: |
+          dart format lib test
+          dart format --output=none --set-exit-if-changed lib test
 
       - name: Analizar código
         run: flutter analyze
