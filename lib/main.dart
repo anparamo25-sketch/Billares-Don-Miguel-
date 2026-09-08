@@ -9,7 +9,7 @@ import 'package:flutter_background/flutter_background.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const String appVersion = '1.2.3+123';
+const String appVersion = '1.2.1+121';
 const String defaultPassword = '1234';
 const String updateManifestUrl = 'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json';
 const Map<int, double> tableRates = <int, double>{1: 120, 2: 120, 3: 100, 4: 100, 5: 70};
@@ -253,7 +253,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         androidConfig: const FlutterBackgroundAndroidConfig(
           notificationTitle: 'Billares Don Miguel',
           notificationText: 'CENTRAL activo en segundo plano',
-          notificationImportance: AndroidNotificationImportance.normal,
+          notificationImportance: AndroidNotificationImportance.low,
           enableWifiLock: true,
         ),
       );
@@ -457,8 +457,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     setState(() => checkingUpdate = true);
     HttpClient? client;
     try {
-      client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
-      client.userAgent = 'Billares-Don-Miguel/1.2.3';
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
       final HttpClientRequest request = await client.getUrl(Uri.parse('$updateManifestUrl?x=${DateTime.now().millisecondsSinceEpoch}'));
       request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
       final HttpClientResponse response = await request.close();
