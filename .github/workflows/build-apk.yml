@@ -97,137 +97,19 @@ jobs:
       - name: Instalar dependencias
         run: flutter pub get
 
-      - name: Corregir compatibilidad del plugin y comprobador de actualizaciones
+      - name: Corregir compatibilidad del plugin y actualización
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
-
           path = Path('lib/main.dart')
           s = path.read_text()
           s = s.replace('AndroidNotificationImportance.low', 'AndroidNotificationImportance.normal')
           s = s.replace("const String appVersion = '1.2.1+121';", "const String appVersion = '1.2.2+122';")
-          if 'updateManifestGitHubRawUrl' not in s:
-              s = s.replace(
-                  "const String updateManifestUrl = 'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json';",
-                  "const String updateManifestUrl = 'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json';\nconst String updateManifestGitHubRawUrl = 'https://github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json';\nconst String updateManifestApiUrl = 'https://api.github.com/repos/anparamo25-sketch/Billares-Don-Miguel-/contents/update.json?ref=main';"
-              )
-
-          start = s.index('  Future<void> checkForUpdate({bool showNoUpdate = true}) async {')
-          end = s.index('  Future<void> changePassword() async {', start)
-          replacement = r'''  Future<Map<String, dynamic>> fetchUpdateManifest(HttpClient client) async {
-    final List<String> urls = <String>[
-      updateManifestUrl,
-      updateManifestGitHubRawUrl,
-      updateManifestApiUrl,
-    ];
-    Object? lastError;
-
-    for (final String url in urls) {
-      try {
-        final String separator = url.contains('?') ? '&' : '?';
-        final HttpClientRequest request = await client.getUrl(Uri.parse('$url${separator}x=${DateTime.now().millisecondsSinceEpoch}'));
-        request.followRedirects = true;
-        request.maxRedirects = 5;
-        request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
-        request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-        request.headers.set(HttpHeaders.userAgentHeader, 'Billares-Don-Miguel/$appVersion');
-
-        final HttpClientResponse response = await request.close();
-        final String body = await response.transform(utf8.decoder).join();
-        if (response.statusCode != 200) {
-          throw HttpException('HTTP ${response.statusCode}', uri: Uri.parse(url));
-        }
-
-        final Map<String, dynamic> data = jsonDecode(body) as Map<String, dynamic>;
-        if (url == updateManifestApiUrl) {
-          final String? encoded = data['content'] as String?;
-          if (encoded == null || encoded.isEmpty) throw const FormatException('Contenido del manifiesto vacío');
-          final String decoded = utf8.decode(base64.decode(encoded.replaceAll(RegExp(r'\s'), '')));
-          return jsonDecode(decoded) as Map<String, dynamic>;
-        }
-        return data;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw HttpException('No se pudo obtener update.json: $lastError');
-  }
-
-  Future<void> checkForUpdate({bool showNoUpdate = true}) async {
-    if (checkingUpdate || !mounted) return;
-    setState(() => checkingUpdate = true);
-    final HttpClient client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
-    try {
-      final Map<String, dynamic> manifest = await fetchUpdateManifest(client);
-      final String latestVersion = (manifest['version'] as String?)?.trim() ?? '';
-      final String? downloadUrl = (manifest['downloadUrl'] ?? manifest['apk_url']) as String?;
-
-      if (latestVersion.isEmpty || downloadUrl == null || downloadUrl.trim().isEmpty) {
-        throw const FormatException('update.json incompleto');
-      }
-
-      if (buildNumber(latestVersion) <= buildNumber(appVersion)) {
-        if (showNoUpdate && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('La aplicación ya está actualizada')));
-        }
-        return;
-      }
-
-      if (!mounted) return;
-      final bool? install = await showDialog<bool>(
-        context: context,
-        builder: (BuildContext context) => AlertDialog(
-          title: const Text('Nueva actualización disponible'),
-          content: Text('Hay una nueva versión ($latestVersion). ¿Deseas actualizar ahora?'),
-          actions: <Widget>[
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Más tarde')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Actualizar ahora')),
-          ],
-        ),
-      );
-      if (install == true) await downloadAndInstall(downloadUrl.trim());
-    } catch (_) {
-      if (showNoUpdate && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo comprobar la actualización. La aplicación continúa funcionando normalmente.')));
-      }
-    } finally {
-      client.close(force: true);
-      if (mounted) setState(() => checkingUpdate = false);
-    }
-  }
-
-  Future<void> downloadAndInstall(String url) async {
-    HttpClient? client;
-    try {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Descargando actualización...')));
-      final Directory directory = await getApplicationDocumentsDirectory();
-      final String path = '${directory.path}/billares-don-miguel-update.apk';
-      client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
-      final HttpClientRequest request = await client.getUrl(Uri.parse(url));
-      request.followRedirects = true;
-      request.maxRedirects = 10;
-      request.headers.set(HttpHeaders.userAgentHeader, 'Billares-Don-Miguel/$appVersion');
-      final HttpClientResponse response = await request.close();
-      if (response.statusCode != 200) throw HttpException('Descarga HTTP ${response.statusCode}');
-      final File file = File(path);
-      final IOSink sink = file.openWrite();
-      await response.pipe(sink);
-      await sink.flush();
-      await sink.close();
-      if (!await file.exists() || await file.length() < 1000000) throw const HttpException('APK descargado incompleto');
-      await ApkInstall().onInstallApk(path);
-    } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo descargar o iniciar la instalación de la actualización.')));
-    } finally {
-      client?.close(force: true);
-    }
-  }
-
-'''
-          s = s[:start] + replacement + s[end:]
+          s = s.replace("const String updateManifestUrl = 'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json';", "const String updateManifestUrl = 'https://github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json';")
+          s = s.replace(
+              "client = HttpClient()..connectionTimeout = const Duration(seconds: 8);",
+              "client = HttpClient()..connectionTimeout = const Duration(seconds: 12);\n      client.userAgent = 'Billares-Don-Miguel/1.2.2';"
+          )
           path.write_text(s)
           PY
           dart fix --apply
@@ -253,14 +135,12 @@ jobs:
           grep -q 'de.julianassmann.flutter_background.IsolateHolderService' android/app/src/main/AndroidManifest.xml
           echo "Configuración Android verificada: compileSdk 36, NDK 27, minSdk 23 y servicio de segundo plano"
 
-      - name: Verificar comprobador de actualizaciones
+      - name: Verificar actualización
         run: |
           grep -q "appVersion = '1.2.2+122'" lib/main.dart
-          grep -q 'updateManifestGitHubRawUrl' lib/main.dart
-          grep -q 'updateManifestApiUrl' lib/main.dart
-          grep -q 'fetchUpdateManifest' lib/main.dart
-          grep -q 'followRedirects = true' lib/main.dart
-          echo "Comprobador de actualizaciones verificado: 3 fuentes, redirecciones y API de respaldo"
+          grep -q 'github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json' lib/main.dart
+          grep -q "client.userAgent = 'Billares-Don-Miguel/1.2.2'" lib/main.dart
+          echo "Comprobador preparado para la versión 1.2.2+122"
 
       - name: Compilar APK release
         run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
