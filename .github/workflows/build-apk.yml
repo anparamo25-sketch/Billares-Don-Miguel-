@@ -6,12 +6,12 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout código actual
         uses: actions/checkout@v4
@@ -26,12 +26,14 @@ jobs:
       - name: Generar plataforma Android limpia
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
 
-      - name: Configurar etiqueta de la aplicación
+      - name: Configurar Android para LAN y actualizaciones
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p=Path('android/app/src/main/AndroidManifest.xml')
           s=p.read_text()
+          s=s.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">', '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />')
+          s=s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
           s=s.replace('android:label="billares_don_miguel"','android:label="Billares Don Miguel"')
           p.write_text(s)
           PY
@@ -39,25 +41,37 @@ jobs:
       - name: Instalar dependencias
         run: flutter pub get
 
+      - name: Verificar formato
+        run: dart format --output=none --set-exit-if-changed lib test
+
       - name: Analizar código
         run: flutter analyze
 
       - name: Ejecutar pruebas
         run: flutter test
 
-      - name: Compilar APK release sin artefactos antiguos
-        run: flutter build apk --release --no-shrink --build-name=1.0.0 --build-number=100
+      - name: Compilar APK release
+        run: flutter build apk --release --no-shrink --build-name=1.1.0 --build-number=110
 
-      - name: Renombrar APK con versión y ejecución
+      - name: Preparar APK y checksum
         run: |
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk "dist/Billares-Don-Miguel-v1.0.0-build100-run${{ github.run_number }}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/Billares-Don-Miguel-v1.1.0-build110-run${{ github.run_number }}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/Billares-Don-Miguel-latest.apk"
           sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
 
       - name: Publicar APK actual como artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: Billares-Don-Miguel-APK-v1.0.0-build100-run${{ github.run_number }}
+          name: Billares-Don-Miguel-APK-v1.1.0-build110-run${{ github.run_number }}
           path: dist/*
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publicar release para actualizaciones
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.1.0-build${{ github.run_number }}
+          name: Billares Don Miguel v1.1.0 (build ${{ github.run_number }})
+          generate_release_notes: true
+          files: dist/Billares-Don-Miguel-latest.apk
