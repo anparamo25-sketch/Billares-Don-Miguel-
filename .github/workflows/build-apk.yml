@@ -100,19 +100,15 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import os
-          import re
           path = Path('lib/main.dart')
           s = path.read_text()
-          build_name = os.environ['BUILD_NAME']
-          build_number = os.environ['BUILD_NUMBER']
-          version = f'{build_name}+{build_number}'
+          version = '1.2.3+123'
           s = s.replace('AndroidNotificationImportance.low', 'AndroidNotificationImportance.normal')
-          s = re.sub(r"const String appVersion = '[^']+';", f"const String appVersion = '{version}';", s, count=1)
-          s = re.sub(r"const String updateManifestUrl = '[^']+';", "const String updateManifestUrl = 'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json';", s, count=1)
+          s = __import__('re').sub(r"const String appVersion = '[^']+';", f"const String appVersion = '{version}';", s, count=1)
+          s = __import__('re').sub(r"const String updateManifestUrl = '[^']+';", "const String updateManifestUrl = 'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json';", s, count=1)
           s = s.replace(
               "client = HttpClient()..connectionTimeout = const Duration(seconds: 8);",
-              f"client = HttpClient()..connectionTimeout = const Duration(seconds: 12);\n      client.userAgent = 'Billares-Don-Miguel/{build_name}';"
+              "client = HttpClient()..connectionTimeout = const Duration(seconds: 12);\n      client.userAgent = 'Billares-Don-Miguel/1.2.3';"
           )
           path.write_text(s)
           PY
@@ -141,19 +137,19 @@ jobs:
 
       - name: Verificar actualización
         run: |
-          grep -q "appVersion = '${BUILD_NAME}+${BUILD_NUMBER}'" lib/main.dart
+          grep -q "appVersion = '1.2.3+123'" lib/main.dart
           grep -q 'github.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json' lib/main.dart
-          grep -q "client.userAgent = 'Billares-Don-Miguel/${BUILD_NAME}'" lib/main.dart
-          echo "Comprobador preparado para la versión ${BUILD_NAME}+${BUILD_NUMBER}"
+          grep -q "client.userAgent = 'Billares-Don-Miguel/1.2.3'" lib/main.dart
+          echo "Comprobador preparado para la versión 1.2.3+123"
 
       - name: Compilar APK release
-        run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
+        run: flutter build apk --release --no-shrink --build-name=1.2.3 --build-number=123
 
       - name: Verificar APK generado
         run: |
           test -s build/app/outputs/flutter-apk/app-release.apk
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk "dist/Billares-Don-Miguel-v${BUILD_NAME}-build${BUILD_NUMBER}-run${{ github.run_number }}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/Billares-Don-Miguel-v1.2.3-build123-run${{ github.run_number }}.apk"
           cp build/app/outputs/flutter-apk/app-release.apk "dist/Billares-Don-Miguel-latest.apk"
           sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
 
@@ -165,7 +161,7 @@ jobs:
           set -euo pipefail
           cat > /tmp/update.json <<EOF
           {
-            "version": "${BUILD_NAME}+${BUILD_NUMBER}",
+            "version": "1.2.3+123",
             "downloadUrl": "https://github.com/anparamo25-sketch/Billares-Don-Miguel-/releases/latest/download/Billares-Don-Miguel-latest.apk"
           }
           EOF
@@ -181,11 +177,11 @@ jobs:
             git add update.json
 
             if git diff --cached --quiet; then
-              echo "update.json ya contiene la versión ${BUILD_NAME}+${BUILD_NUMBER}."
+              echo "update.json ya contiene la versión 1.2.3+123."
               break
             fi
 
-            git commit -m "chore: publish update manifest ${BUILD_NAME}+${BUILD_NUMBER}"
+            git commit -m "chore: publish update manifest 1.2.3+123"
 
             if git push origin HEAD:main; then
               echo "update.json publicado correctamente."
@@ -204,7 +200,7 @@ jobs:
       - name: Publicar APK como artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: Billares-Don-Miguel-APK-v${{ env.BUILD_NAME }}-build${{ env.BUILD_NUMBER }}-run${{ github.run_number }}
+          name: Billares-Don-Miguel-APK-v1.2.3-build123-run${{ github.run_number }}
           path: dist/*
           if-no-files-found: error
           retention-days: 30
@@ -212,7 +208,7 @@ jobs:
       - name: Publicar release para actualizaciones
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.BUILD_NAME }}-build${{ github.run_number }}
-          name: Billares Don Miguel v${{ env.BUILD_NAME }} (build ${{ github.run_number }})
+          tag_name: v1.2.3-build${{ github.run_number }}
+          name: Billares Don Miguel v1.2.3 (build ${{ github.run_number }})
           generate_release_notes: true
           files: dist/Billares-Don-Miguel-latest.apk
