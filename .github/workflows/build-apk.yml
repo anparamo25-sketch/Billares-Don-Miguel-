@@ -51,6 +51,19 @@ jobs:
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
       - name: Preparar versión 1.2.4 y conectividad TV
         run: python3 scripts/prepare_1_2_4.py
+      - name: Corregir parche de interfaz 1.2.4
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/prepare_1_2_4.py')
+          s = path.read_text()
+          old = r'r"  @override\\n  Widget build\\(BuildContext context\\) => Scaffold\\(.*?\\n\\}"'
+          new = r'r"  @override\\n  Widget build\\(BuildContext context\\) => Scaffold\\(\\n        appBar: AppBar\\(.*?\\n\\}"'
+          if old not in s:
+              raise SystemExit('No se encontró el patrón de build de Dashboard en prepare_1_2_4.py')
+          path.write_text(s.replace(old, new, 1))
+          PY
+          python3 scripts/prepare_1_2_4.py
       - name: Configurar Android para LAN, actualizaciones, segundo plano y compatibilidad
         run: |
           python3 - <<'PY'
