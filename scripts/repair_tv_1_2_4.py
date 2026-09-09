@@ -54,11 +54,11 @@ def find_matching_brace(source: str, open_pos: int) -> int:
 
 
 def remove_definitions(source: str) -> str:
+    # Indentation-independent: dart format may normalize the indentation before
+    # this repair runs, so never require exactly two leading spaces.
     patterns = [
-        re.compile(r'(?m)^  Future<void> showTvConnection\(\) async \{'),
-        re.compile(r'(?m)^  String get tvHtml \{'),
-        re.compile(r'(?m)^  Future<void> showTvConnectionLegacy\d+\(\) async \{'),
-        re.compile(r'(?m)^  String get tvHtmlLegacy\d+ \{'),
+        re.compile(r'(?m)^\s*Future<void>\s+showTvConnection(?:Legacy\d+)?\(\)\s+async\s*\{'),
+        re.compile(r'(?m)^\s*String\s+get\s+tvHtml(?:Legacy\d+)?\s*\{'),
     ]
     while True:
         matches = []
@@ -120,11 +120,11 @@ tv = r'''  String get tvHtml {
 
 s = insert_before(s, '  Map<String, dynamic> stateMap()', show_tv + '\n' + tv + '\n')
 
-if s.count('  String get tvHtml {') != 1:
+if len(re.findall(r'(?m)^\s*String\s+get\s+tvHtml\s*\{', s)) != 1:
     raise SystemExit('TV REPAIR FAILED: tvHtml no quedó exactamente una vez')
-if s.count('  Future<void> showTvConnection() async {') != 1:
+if len(re.findall(r'(?m)^\s*Future<void>\s+showTvConnection\(\)\s+async\s*\{', s)) != 1:
     raise SystemExit('TV REPAIR FAILED: showTvConnection no quedó exactamente una vez')
-if 'showTvConnectionLegacy' in s or 'tvHtmlLegacy' in s:
+if re.search(r'(?m)^\s*(?:Future<void>\s+showTvConnectionLegacy\d+|String\s+get\s+tvHtmlLegacy\d+)', s):
     raise SystemExit('TV REPAIR FAILED: quedaron definiciones heredadas')
 
 TARGET.write_text(s)
