@@ -12,8 +12,6 @@ REQUIRED = {
     "tv_host": 'billaresdonmiguel.local',
     "tv_api": '/api/state?ts=',
     "lan_port_field": 'lanPort',
-    "lan_80": 'HttpServer.bind(InternetAddress.anyIPv4, 80',
-    "lan_8080": 'HttpServer.bind(InternetAddress.anyIPv4, 8080',
     "mdns_socket": 'RawDatagramSocket',
     "mdns_group": '224.0.0.251',
     "mdns_port": '5353',
@@ -29,8 +27,22 @@ for name, marker in REQUIRED.items():
     if marker not in SOURCE and marker not in NORMALIZED:
         raise SystemExit(f'1.2.6 CONTRACT FAILED: falta {name}: {marker}')
 
-if SOURCE.count('String get tvHtml =>') != 1:
-    raise SystemExit('1.2.6 CONTRACT FAILED: tvHtml debe existir exactamente una vez')
+# Los puertos se validan semánticamente para no depender del formato que aplica dart format.
+for port in (80, 8080):
+    pattern = rf'HttpServer\\.bind\\(\\s*InternetAddress\\.anyIPv4\\s*,\\s*{port}\\b'
+    if not re.search(pattern, NORMALIZED):
+        raise SystemExit(f'1.2.6 CONTRACT FAILED: servidor LAN sin soporte para puerto {port}')
+
+# Debe existir una sola implementación de cada pieza crítica.
+for pattern, name in (
+    (r'(?m)^\\s*Future<void>\\s+startLanServer\\s*\\(', 'startLanServer'),
+    (r'(?m)^\\s*Future<void>\\s+showTvConnection\\s*\\(', 'showTvConnection'),
+    (r'(?m)^\\s*String\\s+get\\s+tvHtml\\s*=>', 'tvHtml'),
+):
+    count = len(re.findall(pattern, SOURCE))
+    if count != 1:
+        raise SystemExit(f'1.2.6 CONTRACT FAILED: {name} debe existir exactamente una vez (actual: {count})')
+
 if SOURCE.count('RawDatagramSocket? _billaresMdnsSocket;') != 1:
     raise SystemExit('1.2.6 CONTRACT FAILED: socket mDNS duplicado o ausente')
 if SOURCE.count('onCheckInstallApkPermission') != 1:
@@ -47,6 +59,10 @@ for marker in ('color:#1557c0', 'text-shadow:', 'font-size:clamp('):
 for marker in ('.green{', '.red{', '.yellow{', "'Disponible'", "'En juego'", "'Pendiente de cobro'"):
     if marker not in SOURCE:
         raise SystemExit(f'1.2.6 CONTRACT FAILED: estado visual ausente: {marker}')
+
+# El panel externo de vigilancia NO pertenece a 1.2.6.
+if 'panel externo' in SOURCE.lower() or 'vigilancia externa' in SOURCE.lower():
+    raise SystemExit('1.2.6 CONTRACT FAILED: el panel externo no pertenece a esta versión')
 
 # No se permite introducir lógica de faltante/sobrante/diferencia de caja.
 for forbidden in ('faltante', 'sobrante', 'diferencia de caja', 'caja cuadrada'):
