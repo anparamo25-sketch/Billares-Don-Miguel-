@@ -68,6 +68,19 @@ jobs:
         run: python3 scripts/repair_1_2_6_generated.py
       - name: Aplicar fuente final 1.2.6
         run: python3 scripts/enforce_1_2_6_source.py
+      - name: Guardar fuente final 1.2.6 en repositorio
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+anparamo25-sketch@users.noreply.github.com"
+          git add lib/main.dart
+          if git diff --cached --quiet; then
+            echo "La fuente final 1.2.6 ya estaba sincronizada."
+          else
+            git commit -m "chore: sincronizar fuente final 1.2.6 [skip ci]"
+            git push origin HEAD:main
+          fi
       - name: Configurar Android para LAN, actualizaciones y segundo plano
         run: |
           python3 - <<'PY'
