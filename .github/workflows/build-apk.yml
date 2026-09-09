@@ -1,8 +1,6 @@
 name: Billares Don Miguel - Build APK
 
-# Ejecución manual de validación/distribución de 1.2.4+124.
-# La compilación genera el APK para instalación manual.
-
+# Compilación de distribución 1.2.5+125.
 on:
   push:
     branches: [main]
@@ -15,8 +13,8 @@ permissions:
 
 env:
   FLUTTER_VERSION: 3.29.3
-  BUILD_NAME: 1.2.4
-  BUILD_NUMBER: 124
+  BUILD_NAME: 1.2.5
+  BUILD_NUMBER: 125
   MIN_SDK: 23
   COMPILE_SDK: 36
   NDK_VERSION: 27.0.12077973
@@ -51,9 +49,9 @@ jobs:
           sdkmanager "platforms;android-${COMPILE_SDK}" "build-tools;36.0.0" "ndk;${NDK_VERSION}"
       - name: Generar plataforma Android limpia
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
-      - name: Preparar versión 1.2.4
+      - name: Preparar versión 1.2.5
         run: python3 scripts/prepare_1_2_4.py
-      - name: Reparar y validar fuente generada 1.2.4
+      - name: Reparar y validar fuente generada 1.2.5
         run: python3 scripts/repair_1_2_4_generated.py
       - name: Sanitizar código Dart generado
         shell: bash
@@ -106,11 +104,11 @@ jobs:
           grep -q 'REQUEST_INSTALL_PACKAGES' android/app/src/main/AndroidManifest.xml
           grep -q 'FOREGROUND_SERVICE_SPECIAL_USE' android/app/src/main/AndroidManifest.xml
           grep -q 'de.julianassmann.flutter_background.IsolateHolderService' android/app/src/main/AndroidManifest.xml
-      - name: Verificar versión 1.2.4 y TV exclusiva
+      - name: Verificar versión 1.2.5 y TV exclusiva
         run: |
-          grep -q "appVersion = '1.2.4+124'" lib/main.dart
+          grep -q "appVersion = '1.2.5+125'" lib/main.dart
           grep -q 'github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json' lib/main.dart
-          grep -q "client.userAgent = 'Billares-Don-Miguel/1.2.4'" lib/main.dart
+          grep -q "client.userAgent = 'Billares-Don-Miguel/1.2.5'" lib/main.dart
           grep -q "com.billaresdonmiguel/tv_cast" lib/main.dart
           grep -q "ACTION_CAST_SETTINGS" android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           grep -q "Pantalla exclusiva para TV" lib/main.dart
