@@ -2,6 +2,7 @@ name: Billares Don Miguel - Build APK
 
 # Compilación de distribución 1.2.5+125.
 # Ejecución forzada después de la limpieza determinista del receptor TV.
+# Trigger de compilación: corrección mDNS 1.2.5.
 on:
   push:
     branches: [main]
