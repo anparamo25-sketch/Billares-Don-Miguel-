@@ -17,6 +17,40 @@ def skip_string(source, index):
     raise SystemExit('ADMIN UI FAILED: cadena Dart sin cerrar')
 
 
+def scan_until_statement_end(source, index):
+    depth_paren = 0
+    depth_bracket = 0
+    depth_brace = 0
+    while index < len(source):
+        if source[index] in "'\"":
+            index = skip_string(source, index)
+            continue
+        if source.startswith('//', index):
+            end = source.find('\n', index + 2)
+            index = len(source) if end < 0 else end + 1
+            continue
+        char = source[index]
+        if char == '(':
+            depth_paren += 1
+        elif char == ')':
+            depth_paren -= 1
+        elif char == '[':
+            depth_bracket += 1
+        elif char == ']':
+            depth_bracket -= 1
+        elif char == '{':
+            depth_brace += 1
+        elif char == '}':
+            if depth_brace > 0:
+                depth_brace -= 1
+            elif depth_paren == 0 and depth_bracket == 0:
+                return index
+        elif char == ';' and depth_paren == 0 and depth_bracket == 0 and depth_brace == 0:
+            return index + 1
+        index += 1
+    raise SystemExit('ADMIN UI FAILED: expresión build sin terminar')
+
+
 def brace_end(source, brace):
     depth = 0
     i = brace
@@ -56,10 +90,13 @@ def method_span(source, class_start, class_end, name):
     if rel < 0:
         raise SystemExit(f'ADMIN UI FAILED: {name} del administrador ausente')
     start = class_start + rel
-    brace = source.find('{', start)
-    if brace < 0 or brace >= class_end:
-        raise SystemExit(f'ADMIN UI FAILED: {name} debe ser bloque')
-    return start, brace_end(source, brace)
+    brace = source.find('{', start, class_end)
+    arrow = source.find('=>', start, class_end)
+    if brace >= 0 and (arrow < 0 or brace < arrow):
+        return start, brace_end(source, brace)
+    if arrow >= 0:
+        return start, scan_until_statement_end(source, arrow + 2)
+    raise SystemExit(f'ADMIN UI FAILED: {name} debe tener cuerpo Dart válido')
 
 
 ui = r'''  Widget _summaryCard(String label, String value, Color color, IconData icon) {
