@@ -2,11 +2,15 @@ from pathlib import Path
 
 TARGET = Path('lib/main.dart')
 
-
-def method_end(source: str, start: int) -> int:
+def method_span(source: str, signature: str, occurrence: int = 1):
+    start = -1
+    for _ in range(occurrence):
+        start = source.find(signature, start + 1)
+        if start < 0:
+            raise SystemExit(f'No se encontró: {signature} (ocurrencia {occurrence})')
     brace = source.find('{', start)
     if brace < 0:
-        raise SystemExit('No se encontró llave de apertura del método')
+        raise SystemExit(f'No se encontró llave de apertura: {signature}')
     depth = 0
     quote = None
     triple = False
@@ -45,27 +49,19 @@ def method_end(source: str, start: int) -> int:
         elif ch == '}':
             depth -= 1
             if depth == 0:
-                return i + 1
+                return start, i + 1
         i += 1
-    raise SystemExit('Llaves sin cerrar en método')
-
+    raise SystemExit(f'Llaves sin cerrar: {signature}')
 
 def replace_method(source: str, signature: str, replacement: str) -> str:
-    start = source.find(signature)
-    if start < 0:
-        raise SystemExit(f'No se encontró: {signature}')
-    end = method_end(source, start)
+    start, end = method_span(source, signature, 1)
     return source[:start] + replacement + source[end:]
-
 
 def remove_duplicate_methods(source: str, signature: str) -> str:
     while source.count(signature) > 1:
-        first = source.find(signature)
-        second = source.find(signature, first + len(signature))
-        end = method_end(source, second)
-        source = source[:second] + source[end:]
+        start, end = method_span(source, signature, 2)
+        source = source[:start] + source[end:]
     return source
-
 
 s = TARGET.read_text()
 
@@ -110,9 +106,9 @@ s = replace_method(s, '  String get tvHtml {', tv)
 s = remove_duplicate_methods(s, '  String get tvHtml {')
 
 if s.count('  String get tvHtml {') != 1:
-    raise SystemExit('RECEPTOR TV FAILED: debe existir exactamente un tvHtml')
+    raise SystemExit('TV REPAIR FAILED: debe existir exactamente una definición de tvHtml')
 if s.count('  Future<void> showTvConnection() async {') != 1:
-    raise SystemExit('RECEPTOR TV FAILED: debe existir exactamente un showTvConnection')
+    raise SystemExit('TV REPAIR FAILED: debe existir exactamente una definición de showTvConnection')
 
 TARGET.write_text(s)
-print('OK: receptor TV único, estructural y separado del Dashboard')
+print('OK: receptor TV único; Dashboard intacto; sin definiciones duplicadas')
