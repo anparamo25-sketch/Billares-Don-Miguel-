@@ -52,13 +52,21 @@ for bad in ('checkingUpdate', 'showSettings', 'logout', 'dashboard()', 'historyP
     if bad in login: raise SystemExit(f'REPAIR PREFLIGHT FAILED: {bad} quedó dentro de _LoginPageState')
 if "appVersion = '1.2.5+125'" not in current: raise SystemExit('REPAIR PREFLIGHT FAILED: versión 1.2.5+125 ausente')
 if 'class _DashboardPageState' not in current: raise SystemExit('REPAIR PREFLIGHT FAILED: DashboardPage ausente')
-if 'Pantalla exclusiva para TV' not in current: raise SystemExit('REPAIR PREFLIGHT FAILED: receptor TV ausente')
 
 TARGET.write_text(current)
+# Corrige primero los delimitadores del script de reparación TV antes de ejecutarlo.
+subprocess.check_call(['python3', 'scripts/repair_tv_script_syntax.py'])
 subprocess.check_call(['python3', 'scripts/repair_tv_1_2_4.py'])
 subprocess.check_call(['python3', 'scripts/repair_tv_hostname_1_2_5.py'])
 current = TARGET.read_text()
 current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.5+125';", current, count=1)
 current = current.replace('tv_web_receiver_disabled', 'tv_cast').replace('ACTION_CAST_SETTINGS_DISABLED', 'ACTION_CAST_SETTINGS')
+
+# Validaciones estrictas del receptor generado.
+if 'String get tvHtml {' not in current: raise SystemExit('REPAIR TV FAILED: tvHtml ausente')
+if "Billares Don Miguel - TV" not in current: raise SystemExit('REPAIR TV FAILED: título TV ausente')
+if "fetch('/api/state?ts='+Date.now()" not in current: raise SystemExit('REPAIR TV FAILED: actualización TV ausente')
+if "C\\$ " not in current: raise SystemExit('REPAIR TV FAILED: escapado de C$ ausente')
+if 'billaresdonmiguel.local' not in current: raise SystemExit('REPAIR TV FAILED: hostname TV ausente')
 TARGET.write_text(current)
-print('OK: 1.2.5 source repaired with dedicated TV web receiver and fixed hostname')
+print('OK: 1.2.5 source repaired and TV receiver validated')
