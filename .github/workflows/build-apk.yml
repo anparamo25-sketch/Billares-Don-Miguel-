@@ -140,16 +140,27 @@ jobs:
           cat > /tmp/update.json <<EOF
           {"version":"${BUILD_NAME}+${BUILD_NUMBER}","downloadUrl":"https://github.com/anparamo25-sketch/Billares-Don-Miguel-/releases/latest/download/Billares-Don-Miguel-latest.apk"}
           EOF
-          git config user.name "github-actions[bot]"; git config user.email "41898282+anparamo25-sketch@users.noreply.github.com"
-          for attempt in 1 2 3 4 5; do
-            git fetch origin main; git checkout -B main origin/main; cp /tmp/update.json update.json; git add update.json
-            if git diff --cached --quiet; then break; fi
-            git commit -m "chore: publish update manifest ${BUILD_NAME}+${BUILD_NUMBER}"
-            if git push origin HEAD:main; then break; fi
-            git reset --hard origin/main
-            if [ "$attempt" -eq 5 ]; then exit 1; fi
-            sleep 2
-          done
+          python3 - <<'PY'
+          import base64, json, os, subprocess
+          from pathlib import Path
+          content = Path('/tmp/update.json').read_bytes()
+          encoded = base64.b64encode(content).decode()
+          payload = json.dumps({"message": f"chore: publish update manifest {os.environ['BUILD_NAME']}+{os.environ['BUILD_NUMBER']}", "content": encoded})
+          result = subprocess.run([
+              'gh', 'api',
+              'repos/anparamo25-sketch/Billares-Don-Miguel-/contents/update.json',
+              '--method', 'PUT',
+              '--field', f'branch=main',
+              '--field', f'message=chore: publish update manifest {os.environ["BUILD_NAME"]}+{os.environ["BUILD_NUMBER"]}',
+              '--field', f'content={encoded}',
+          ], text=True, capture_output=True)
+          if result.returncode == 0:
+              print('Manifesto de actualización publicado correctamente sin modificar el workspace de compilación.')
+              raise SystemExit(0)
+          print(result.stdout)
+          print(result.stderr)
+          raise SystemExit(result.returncode)
+          PY
       - name: Publicar APK como artefacto
         uses: actions/upload-artifact@v4
         with:
