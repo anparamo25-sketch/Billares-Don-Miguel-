@@ -41,7 +41,7 @@ def brace_end(source, start):
 
 def remove_top_level_function(source, name):
     pattern = re.compile(
-        rf'(?m)^Future<void>\s+{re.escape(name)}\s*\([^)]*\)\s*(?:async\s*)?\{{'
+        rf'(?m)^\s*(?:Future\s*<\s*[^>]+\s*>|void|String\??)\s+{re.escape(name)}\s*\([^)]*\)\s*(?:async\s*)?\{{'
     )
     while True:
         match = pattern.search(source)
@@ -101,9 +101,6 @@ Future<void> _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram) as
     final List<int> octets = ip.split('.').map(int.parse).toList();
     if (octets.length != 4) return;
 
-    // Valid DNS/mDNS header: flags=0x8400, QDCOUNT=0, ANCOUNT=1,
-    // NSCOUNT=0, ARCOUNT=0. The old implementation put TTL/RDLENGTH
-    // into the header and produced an invalid DNS packet.
     final response = <int>[];
     response.addAll(query.sublist(0, 2));
     response.addAll(<int>[0x84, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
@@ -145,10 +142,9 @@ Future<void> _startBillaresMdns() async {
 '''
 
 source = TARGET.read_text()
-# Remove every generated copy before inserting one canonical implementation.
-source = remove_top_level_function(source, '_answerBillaresMdns')
-source = remove_top_level_function(source, '_startBillaresMdns')
-source = remove_top_level_function(source, '_billaresLocalIp')
+# Remove every generated copy, including Future<String?> _billaresLocalIp.
+for function_name in ('_answerBillaresMdns', '_startBillaresMdns', '_billaresLocalIp'):
+    source = remove_top_level_function(source, function_name)
 source = remove_socket(source)
 
 first_class = re.search(r'(?m)^class\s+[A-Za-z_][A-Za-z0-9_]*', source)
@@ -157,4 +153,4 @@ if not first_class:
 
 source = source[:first_class.start()] + MDNS_SOURCE.lstrip() + '\n' + source[first_class.start():]
 TARGET.write_text(source)
-print('OK: mDNS 1.2.6 corregido estructuralmente; implementación canónica insertada una sola vez')
+print('OK: mDNS 1.2.6 corregido estructuralmente; local IP y funciones canónicas insertadas una sola vez')
