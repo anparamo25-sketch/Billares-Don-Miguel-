@@ -88,89 +88,83 @@ def matching_brace(source: str, open_pos: int) -> int:
     raise SystemExit('mDNS ENSURE FAILED: llaves Dart sin cerrar')
 
 
-def all_class_spans(source: str):
+def class_spans(source: str):
     spans = []
-    for match in re.finditer(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*\b[^\{]*\{', source):
-        brace = source.find('{', match.start())
+    for m in re.finditer(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*\b[^\{]*\{', source):
+        brace = source.find('{', m.start(), m.end())
         try:
             end = matching_brace(source, brace)
         except SystemExit:
             continue
-        spans.append((match.start(), end, source[match.start():end]))
+        spans.append((m.start(), end, source[m.start():end]))
     return spans
 
 
 def remove_method(source: str, pattern: re.Pattern) -> str:
     while True:
-        match = pattern.search(source)
-        if not match: return source
-        brace = source.find('{', match.start(), match.end())
-        if brace < 0: return source
+        m = pattern.search(source)
+        if not m:
+            return source
+        brace = source.find('{', m.start(), m.end())
+        if brace < 0:
+            return source
         end = matching_brace(source, brace)
-        source = source[:match.start()] + source[end:]
+        source = source[:m.start()] + source[end:]
 
 
 s = TARGET.read_text()
-classes = all_class_spans(s)
-# Find the actual class that owns the HTTP listener. No dependency on any
-# historical class name such as _DashboardPageState or method name startLanServer.
-owner = None
-for a, b, text in classes:
-    if re.search(r'server!\.listen\(\s*handleRequest\b', text):
-        owner = (a, b, text)
+
+# The generated source may rename the dashboard class or server field. Locate
+# the actual class structurally: it must contain an HTTP bind and a listener
+# whose callback is handleRequest. No historical class/method name is required.
+own = None
+for a, b, text in class_spans(s):
+    if 'HttpServer.bind' in text and re.search(r'\.listen\s*\(\s*handleRequest\b', text):
+        own = (a, b, text)
         break
-if owner is None:
+if own is None:
     raise SystemExit('mDNS ENSURE FAILED: no se encontró el servidor HTTP del receptor TV')
 
-class_start, class_end, owner_text = owner
+class_start, class_end, owner_text = own
 
 if FIELD.strip() not in owner_text:
-    insert_at = s.find('{', class_start) + 1
+    insert_at = s.find('{', class_start, class_end) + 1
     s = s[:insert_at] + '\n' + FIELD + s[insert_at:]
 
-# Recalculate the owning class after the field insertion.
-for a, b, text in all_class_spans(s):
-    if re.search(r'server!\.listen\(\s*handleRequest\b', text):
-        class_start, class_end, owner_text = a, b, text
-        break
-else:
-    raise SystemExit('mDNS ENSURE FAILED: se perdió el servidor HTTP tras insertar socket')
-
-# Remove only our generated mDNS methods, wherever they are in the source,
-# then insert one clean copy inside the owning server class.
+# Remove old generated copies, then recalculate the owner.
 s = remove_method(s, re.compile(r'(?m)^\s*Future<void>\s+_startBillaresMdns\s*\(\)\s+async\s*\{'))
 s = remove_method(s, re.compile(r'(?m)^\s*void\s+_answerBillaresMdns\s*\(RawDatagramSocket\s+socket,\s*Datagram\s+datagram\)\s*\{'))
 
-for a, b, text in all_class_spans(s):
-    if re.search(r'server!\.listen\(\s*handleRequest\b', text):
+for a, b, text in class_spans(s):
+    if 'HttpServer.bind' in text and re.search(r'\.listen\s*\(\s*handleRequest\b', text):
         class_start, class_end, owner_text = a, b, text
         break
 else:
     raise SystemExit('mDNS ENSURE FAILED: servidor HTTP ausente después de limpiar mDNS')
 
-marker = re.search(r'(?m)^\s*Map<String,\s*dynamic>\s+stateMap\s*\(\)', owner_text)
-absolute = class_start + marker.start() if marker else class_end - 1
-s = s[:absolute] + METHODS + '\n' + s[absolute:]
+# Re-add exactly one copy immediately before the end of the real server class.
+absolute = class_end - 1
+s = s[:absolute] + '\n' + METHODS + s[absolute:]
 
-# Recalculate and attach startup to the real HTTP listener exactly once.
-for a, b, text in all_class_spans(s):
-    if re.search(r'server!\.listen\(\s*handleRequest\b', text):
+# Recalculate owner and attach startup exactly once after the real HTTP listener.
+for a, b, text in class_spans(s):
+    if 'HttpServer.bind' in text and re.search(r'\.listen\s*\(\s*handleRequest\b', text):
         class_start, class_end, owner_text = a, b, text
         break
 else:
     raise SystemExit('mDNS ENSURE FAILED: listener HTTP ausente al finalizar')
 
 owner_text = re.sub(r'\n\s*await\s+_startBillaresMdns\(\);', '', owner_text)
-listener = re.search(r'server!\.listen\(\s*handleRequest\b[^;]*\);', owner_text)
+listener = re.search(r'\.listen\s*\(\s*handleRequest\b[^;]*\);', owner_text)
 if not listener:
     raise SystemExit('mDNS ENSURE FAILED: listener HTTP no reconocido')
 pos = listener.end()
 owner_text = owner_text[:pos] + '\n      await _startBillaresMdns();' + owner_text[pos:]
 s = s[:class_start] + owner_text + s[class_end:]
 
-# Semantic validation over the actual owning class.
-for a, b, text in all_class_spans(s):
-    if re.search(r'server!\.listen\(\s*handleRequest\b', text):
+# Semantic validation. Do not require exact whitespace or a historical class name.
+for a, b, text in class_spans(s):
+    if 'HttpServer.bind' in text and re.search(r'\.listen\s*\(\s*handleRequest\b', text):
         owner_text = text
         break
 else:
@@ -184,7 +178,6 @@ checks = (
     'RawDatagramSocket.bind',
     '5353',
     '224.0.0.251',
-    'server!.listen(handleRequest',
 )
 for marker in checks:
     if marker not in owner_text:
@@ -201,4 +194,4 @@ if owner_text.count('await _startBillaresMdns();') != 1:
     raise SystemExit('mDNS ENSURE FAILED: arranque mDNS duplicado')
 
 TARGET.write_text(s)
-print('OK: mDNS instalado por estructura del servidor, independiente de nombres históricos de clases y métodos')
+print('OK: mDNS instalado por estructura real del servidor HTTP, sin depender de nombres históricos')
