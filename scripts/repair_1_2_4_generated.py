@@ -6,7 +6,7 @@ import py_compile
 TARGET = Path('lib/main.dart')
 STABLE_COMMIT = '5e5ec88e7f6c12f5c1dae006ad95da4b903f950d'
 
-for script in ('scripts/prepare_1_2_4.py', 'scripts/repair_1_2_4_generated.py', 'scripts/repair_tv_1_2_4.py', 'scripts/repair_tv_hostname_1_2_5.py', 'scripts/repair_tv_final_safety.py'):
+for script in ('scripts/prepare_1_2_4.py', 'scripts/repair_1_2_4_generated.py', 'scripts/repair_tv_1_2_4.py', 'scripts/repair_tv_hostname_1_2_5.py', 'scripts/ensure_mdns_1_2_5.py', 'scripts/repair_tv_final_safety.py'):
     try:
         py_compile.compile(script, doraise=True)
     except py_compile.PyCompileError as exc:
@@ -73,18 +73,20 @@ TARGET.write_text(current)
 subprocess.check_call(['python3', 'scripts/repair_tv_1_2_4.py'])
 py_compile.compile('scripts/repair_tv_hostname_1_2_5.py', doraise=True)
 subprocess.check_call(['python3', 'scripts/repair_tv_hostname_1_2_5.py'])
+subprocess.check_call(['python3', 'scripts/ensure_mdns_1_2_5.py'])
 
 current = TARGET.read_text()
 current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.5+125';", current, count=1)
 current = current.replace('tv_web_receiver_disabled', 'tv_cast').replace('ACTION_CAST_SETTINGS_DISABLED', 'ACTION_CAST_SETTINGS')
 
-# Validaciones semánticas, independientes de espacios, saltos de línea o estilo.
 normalized = re.sub(r'\s+', ' ', current)
 required = {
     'String get tvHtml =>': 'tvHtml ausente',
     'Billares Don Miguel - TV': 'título TV ausente',
     "fetch('/api/state?ts='+Date.now()": 'actualización TV ausente',
     'RawDatagramSocket? _billaresMdnsSocket;': 'mDNS ausente',
+    'Future<void> _startBillaresMdns() async': 'método mDNS ausente',
+    'await _startBillaresMdns();': 'arranque mDNS ausente',
     "function money(n){return 'C&#36; '": 'formato monetario TV ausente',
 }
 for marker, message in required.items():
@@ -124,4 +126,4 @@ if 'String get tvHtml {' in current:
     raise SystemExit('REPAIR TV FAILED: quedó getter tvHtml con bloque Dart antiguo')
 
 TARGET.write_text(current)
-print('OK: fuente 1.2.5 final; TV validada estructural y semánticamente, sin depender del formato del bind')
+print('OK: fuente 1.2.5 final; TV y mDNS validados estructural y semánticamente')
