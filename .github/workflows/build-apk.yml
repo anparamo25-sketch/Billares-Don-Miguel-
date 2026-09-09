@@ -1,7 +1,7 @@
 name: Billares Don Miguel - Build APK
 
 # Compilación limpia de distribución 1.2.5+125.
-# La reconstrucción TV/LAN/mDNS se realiza una sola vez por el productor canónico.
+# TV/LAN/mDNS se reconstruye una sola vez con scripts/rebuild_tv_1_2_5.py.
 on:
   push:
     branches: [main]
@@ -88,7 +88,6 @@ jobs:
           from pathlib import Path
           path = Path('lib/main.dart'); s = path.read_text().replace('AndroidNotificationImportance.low', 'AndroidNotificationImportance.normal'); path.write_text(s)
           PY
-          dart fix --apply
       - name: Formatear y verificar código
         run: |
           dart format lib test
