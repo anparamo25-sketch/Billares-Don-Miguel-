@@ -12,6 +12,7 @@ for script in ('scripts/prepare_1_2_4.py', 'scripts/repair_1_2_4_generated.py', 
     except py_compile.PyCompileError as exc:
         raise SystemExit(f'PREFLIGHT PYTHON FAILED: {script}: {exc}')
 
+
 def class_span(source: str, class_name: str):
     match = re.search(rf'\bclass\s+{re.escape(class_name)}\b[^{{]*\{{', source)
     if not match:
@@ -19,47 +20,132 @@ def class_span(source: str, class_name: str):
     start = match.start()
     brace = source.find('{', match.start())
     depth = 0
-    in_string = False
-    quote = ''
-    escaped = False
+    quote = None
     triple = False
-    for i in range(brace, len(source)):
-        ch = source[i]
-        if in_string:
-            if escaped:
-                escaped = False
-            elif ch == '\\':
-                escaped = True
-            elif triple and source.startswith(quote * 3, i):
-                in_string = False
+    i = brace
+    while i < len(source):
+        if quote:
+            token = quote * 3 if triple else quote
+            if source.startswith(token, i):
+                i += len(token)
+                quote = None
                 triple = False
-            elif not triple and ch == quote:
-                in_string = False
+                continue
+            if source[i] == '\\' and not triple:
+                i += 2
+                continue
+            i += 1
             continue
         if source.startswith("'''", i):
-            in_string, quote, triple = True, "'", True
+            quote, triple = "'", True
+            i += 3
             continue
         if source.startswith('"""', i):
-            in_string, quote, triple = True, '"', True
+            quote, triple = '"', True
+            i += 3
             continue
-        if ch in ("'", '"'):
-            in_string, quote, triple = True, ch, False
+        if source[i] in ("'", '"'):
+            quote, triple = source[i], False
+            i += 1
             continue
-        if ch == '{':
+        if source.startswith('//', i):
+            end = source.find('\n', i + 2)
+            i = len(source) if end < 0 else end + 1
+            continue
+        if source.startswith('/*', i):
+            end = source.find('*/', i + 2)
+            i = len(source) if end < 0 else end + 2
+            continue
+        if source[i] == '{':
             depth += 1
-        elif ch == '}':
+        elif source[i] == '}':
             depth -= 1
             if depth == 0:
                 return start, i + 1
+        i += 1
     raise SystemExit(f'Llaves sin cerrar en {class_name}')
+
 
 def extract_class(source: str, class_name: str) -> str:
     a, b = class_span(source, class_name)
     return source[a:b]
 
+
 def replace_class(source: str, class_name: str, replacement: str) -> str:
     a, b = class_span(source, class_name)
     return source[:a] + replacement + source[b:]
+
+
+def matching_brace(source: str, open_pos: int) -> int:
+    depth = 0
+    quote = None
+    triple = False
+    i = open_pos
+    while i < len(source):
+        if quote:
+            token = quote * 3 if triple else quote
+            if source.startswith(token, i):
+                i += len(token)
+                quote = None
+                triple = False
+                continue
+            if source[i] == '\\' and not triple:
+                i += 2
+                continue
+            i += 1
+            continue
+        if source.startswith("'''", i):
+            quote, triple = "'", True
+            i += 3
+            continue
+        if source.startswith('"""', i):
+            quote, triple = '"', True
+            i += 3
+            continue
+        if source[i] in ("'", '"'):
+            quote, triple = source[i], False
+            i += 1
+            continue
+        if source.startswith('//', i):
+            end = source.find('\n', i + 2)
+            i = len(source) if end < 0 else end + 1
+            continue
+        if source.startswith('/*', i):
+            end = source.find('*/', i + 2)
+            i = len(source) if end < 0 else end + 2
+            continue
+        if source[i] == '{':
+            depth += 1
+        elif source[i] == '}':
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    raise SystemExit('TV CLEANUP FAILED: llaves sin cerrar')
+
+
+def remove_all_tv_members(source: str) -> str:
+    """Remove every TV getter/method regardless of indentation or legacy suffix."""
+    method_pattern = re.compile(r'(?m)^\s*Future<void>\s+showTvConnection(?:Legacy\d+)?\s*\(\)\s+async\s*\{')
+    getter_pattern = re.compile(r'(?m)^\s*String\s+get\s+tvHtml(?:Legacy\d+)?\s*\{')
+    expression_pattern = re.compile(r'(?m)^\s*String\s+get\s+tvHtml(?:Legacy\d+)?\s*=>[^;]*;\s*')
+    patterns = (method_pattern, getter_pattern, expression_pattern)
+    while True:
+        found = []
+        for pattern in patterns:
+            match = pattern.search(source)
+            if match:
+                found.append(match)
+        if not found:
+            return source
+        match = min(found, key=lambda item: item.start())
+        if match.re is expression_pattern:
+            source = source[:match.start()] + source[match.end():]
+            continue
+        open_pos = source.find('{', match.start(), match.end())
+        end_pos = matching_brace(source, open_pos)
+        source = source[:match.start()] + source[end_pos:]
+
 
 current = TARGET.read_text()
 baseline = subprocess.check_output(['git', 'show', f'{STABLE_COMMIT}:lib/main.dart'], text=True)
@@ -92,6 +178,12 @@ subprocess.check_call(['python3', 'scripts/repair_tv_1_2_4.py'])
 py_compile.compile('scripts/repair_tv_hostname_1_2_5.py', doraise=True)
 subprocess.check_call(['python3', 'scripts/repair_tv_hostname_1_2_5.py'])
 
+# Final deterministic pass: the historical preparation is allowed to evolve,
+# but it must never be able to leave two TV getters in the final Dart source.
+current = remove_all_tv_members(TARGET.read_text())
+TARGET.write_text(current)
+subprocess.check_call(['python3', 'scripts/repair_tv_1_2_4.py'])
+
 current = TARGET.read_text()
 current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.5+125';", current, count=1)
 current = current.replace('tv_web_receiver_disabled', 'tv_cast').replace('ACTION_CAST_SETTINGS_DISABLED', 'ACTION_CAST_SETTINGS')
@@ -109,6 +201,12 @@ for marker, message in required.items():
     if marker not in current:
         raise SystemExit(f'REPAIR TV FAILED: {message}')
 
+if len(re.findall(r'(?m)^\s*String\s+get\s+tvHtml\s*\{', current)) != 1:
+    raise SystemExit('REPAIR TV FAILED: tvHtml no quedó exactamente una vez')
+if len(re.findall(r'(?m)^\s*Future<void>\s+showTvConnection\s*\(\)\s+async\s*\{', current)) != 1:
+    raise SystemExit('REPAIR TV FAILED: showTvConnection no quedó exactamente una vez')
+if re.search(r'(?m)^\s*(?:Future<void>\s+showTvConnectionLegacy\d+|String\s+get\s+tvHtmlLegacy\d+)', current):
+    raise SystemExit('REPAIR TV FAILED: quedaron definiciones heredadas')
 if "return r'''" in current:
     raise SystemExit('REPAIR TV FAILED: delimitador Python quedó dentro del Dart generado')
 if 'replaceAll' in current and "replaceAll('\\\\', '\\\\\\\\')" in current:
@@ -117,4 +215,4 @@ if 'ACTION_CAST_SETTINGS' in current and 'Duplicar pantalla' not in current:
     raise SystemExit('REPAIR TV FAILED: ruta de duplicación de pantalla no está identificada')
 
 TARGET.write_text(current)
-print('OK: 1.2.5 source repaired; TV estructuralmente separado del Dashboard; HTML monetario seguro')
+print('OK: 1.2.5 source final; receptor TV reconstruido y validado exactamente una vez')
