@@ -6,7 +6,8 @@ import py_compile
 TARGET = Path('lib/main.dart')
 STABLE = '5e5ec88e7f6c12f5c1dae006ad95da4b903f950d'
 SCRIPTS = ('scripts/prepare_1_2_4.py','scripts/repair_1_2_4_generated.py','scripts/repair_tv_1_2_4.py','scripts/repair_tv_hostname_1_2_5.py','scripts/ensure_mdns_1_2_5.py','scripts/repair_tv_final_safety.py')
-for script in SCRIPTS: py_compile.compile(script, doraise=True)
+for script in SCRIPTS:
+    py_compile.compile(script, doraise=True)
 
 def class_span(source, name):
     m = re.search(rf'\bclass\s+{re.escape(name)}\b[^{{]*\{{', source)
@@ -61,25 +62,56 @@ subprocess.check_call(['python3', 'scripts/repair_tv_hostname_1_2_5.py'])
 subprocess.check_call(['python3', 'scripts/ensure_mdns_1_2_5.py'])
 current = TARGET.read_text()
 current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.5+125';", current, count=1)
-show_matches = list(re.finditer(r'(?m)^\s*(?:Future\s*<\s*void\s*>|Future)\s+showTvConnection\s*\(\s*\)\s+async\s*(?:\{|=>)', current))
-if len(show_matches) != 1: raise SystemExit(f'REPAIR TV FAILED: reconstrucción showTvConnection detectada {len(show_matches)} veces')
-show_start = show_matches[0].start(); show_line_end = current.find('\n', show_start); show_line_end = len(current) if show_line_end < 0 else show_line_end
-show_block = current[show_start:show_line_end] + current[show_line_end:show_line_end + 2500]
-if 'showDialog<void>' not in show_block: raise SystemExit('REPAIR TV FAILED: cuerpo de showTvConnection inválido')
-tv_getters = list(re.finditer(r'(?m)^\s*String\s+get\s+tvHtml\s*=>', current))
-if len(tv_getters) != 1: raise SystemExit(f'REPAIR TV FAILED: tvHtml quedó {len(tv_getters)} veces')
-tv_start = tv_getters[0].start(); tv_end = current.find('\n', tv_start); tv_end = len(current) if tv_end < 0 else tv_end
-tv_line = current[tv_start:tv_end]
-if not tv_line.rstrip().endswith(';'): raise SystemExit('REPAIR TV FAILED: getter tvHtml inválido')
+
+# Validate the producer's actual declaration line. This deliberately does not
+# mask strings/comments and does not require a specific indentation style.
+show_lines = []
+for line_no, line in enumerate(current.splitlines(), 1):
+    n = re.sub(r'\s+', ' ', line.strip())
+    if re.match(r'^Future\s*<\s*void\s*>\s+showTvConnection\s*\(\s*\)\s+async\s*(?:\{)?\s*$', n):
+        show_lines.append(line_no)
+if len(show_lines) != 1:
+    raise SystemExit(f'REPAIR TV FAILED: declaración estructural de showTvConnection detectada {len(show_lines)} veces')
+lines = current.splitlines()
+body_window = '\n'.join(lines[show_lines[0] - 1:show_lines[0] + 100])
+if 'showDialog<void>' not in body_window:
+    raise SystemExit('REPAIR TV FAILED: cuerpo de showTvConnection inválido')
+
+tv_getters = []
+for line_no, line in enumerate(lines, 1):
+    n = re.sub(r'\s+', ' ', line.strip())
+    if re.match(r'^String\s+get\s+tvHtml\s*=>', n):
+        tv_getters.append((line_no, line))
+if len(tv_getters) != 1:
+    raise SystemExit(f'REPAIR TV FAILED: tvHtml quedó {len(tv_getters)} veces')
+tv_line = tv_getters[0][1]
+if not tv_line.rstrip().endswith(';'):
+    raise SystemExit('REPAIR TV FAILED: getter tvHtml inválido')
+
 normalized = re.sub(r'\s+', ' ', current)
-required = {'String get tvHtml =>':'tvHtml ausente','Billares Don Miguel - TV':'título TV ausente',"fetch('/api/state?ts='+Date.now()":'actualización TV ausente','RawDatagramSocket? _billaresMdnsSocket;':'mDNS ausente','Future<void> _startBillaresMdns() async':'método mDNS ausente','await _startBillaresMdns();':'arranque mDNS ausente',"function money(n){return 'C&#36; ":'formato monetario ausente'}
+required = {
+    'String get tvHtml =>':'tvHtml ausente',
+    'Billares Don Miguel - TV':'título TV ausente',
+    "fetch('/api/state?ts='+Date.now()":'actualización TV ausente',
+    'RawDatagramSocket? _billaresMdnsSocket;':'mDNS ausente',
+    'Future<void> _startBillaresMdns() async':'método mDNS ausente',
+    'await _startBillaresMdns();':'arranque mDNS ausente',
+    "function money(n){return 'C&#36; ":'formato monetario ausente'
+}
 for marker, message in required.items():
-    if marker not in normalized: raise SystemExit(f'REPAIR TV FAILED: {message}')
+    if marker not in normalized:
+        raise SystemExit(f'REPAIR TV FAILED: {message}')
 binds = re.findall(r'HttpServer\.bind\s*\(\s*InternetAddress\.anyIPv4\s*,\s*([^,\)]+)', normalized)
-if not any(argument.strip() == '80' for argument in binds): raise SystemExit(f'REPAIR TV FAILED: puerto 80 no reconocido: {binds}')
-if 'billaresdonmiguel.local' not in normalized: raise SystemExit('REPAIR TV FAILED: hostname TV ausente')
-if 'return r"""' in current or "return r'''" in current or 'String get tvHtml {' in current: raise SystemExit('REPAIR TV FAILED: TV heredada detectada')
-outside_tv = current[:tv_start] + current[tv_end:]
-if '===' in outside_tv: raise SystemExit('REPAIR TV FAILED: JavaScript fuera del getter TV')
+if not any(argument.strip() == '80' for argument in binds):
+    raise SystemExit(f'REPAIR TV FAILED: puerto 80 no reconocido: {binds}')
+if 'billaresdonmiguel.local' not in normalized:
+    raise SystemExit('REPAIR TV FAILED: hostname TV ausente')
+if 'return r"""' in current or "return r'''" in current or 'String get tvHtml {' in current:
+    raise SystemExit('REPAIR TV FAILED: TV heredada detectada')
+# Remove exactly the getter line for this syntax-only check so JavaScript tokens
+# inside the JSON-escaped HTML cannot affect the Dart source validation.
+outside_tv = current.replace(tv_line, '', 1)
+if '===' in outside_tv:
+    raise SystemExit('REPAIR TV FAILED: JavaScript fuera del getter TV')
 TARGET.write_text(current)
 print('OK: fuente 1.2.5; reconstrucción TV y mDNS reconocidas sin falso negativo')
