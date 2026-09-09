@@ -50,6 +50,8 @@ jobs:
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
       - name: Preparar versión 1.2.4
         run: python3 scripts/prepare_1_2_4.py
+      - name: Reparar y validar fuente generada 1.2.4
+        run: python3 scripts/repair_1_2_4_generated.py
       - name: Sanitizar código Dart generado
         shell: bash
         run: |
