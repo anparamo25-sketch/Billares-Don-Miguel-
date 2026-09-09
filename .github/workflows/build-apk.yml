@@ -9,8 +9,6 @@ on:
       - update.json
   workflow_dispatch:
 
-authorization_placeholder: null
-
 permissions:
   contents: write
 
@@ -133,7 +131,7 @@ jobs:
           cat > /tmp/update.json <<EOF
           {"version":"${BUILD_NAME}+${BUILD_NUMBER}","downloadUrl":"https://github.com/anparamo25-sketch/Billares-Don-Miguel-/releases/latest/download/Billares-Don-Miguel-latest.apk"}
           EOF
-          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"; git config user.email "41898282+users.noreply.github.com"
           for attempt in 1 2 3 4 5; do
             git fetch origin main; git checkout -B main origin/main; cp /tmp/update.json update.json; git add update.json
             if git diff --cached --quiet; then break; fi
