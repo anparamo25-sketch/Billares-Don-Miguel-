@@ -44,24 +44,23 @@ jobs:
             if [ -z "$SDKMANAGER" ]; then echo "ERROR: No se encontró sdkmanager en el runner de GitHub."; exit 1; fi
             export PATH="$(dirname "$SDKMANAGER"):$PATH"
           fi
-          echo "sdkmanager: $(command -v sdkmanager)"
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-${COMPILE_SDK}" "build-tools;36.0.0" "ndk;${NDK_VERSION}"
       - name: Generar plataforma Android limpia
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
-      - name: Corregir parche de interfaz 1.2.4 y preparar versión
+      - name: Preparar versión 1.2.4
+        run: python3 scripts/prepare_1_2_4.py
+      - name: Sanitizar código Dart generado
+        shell: bash
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('scripts/prepare_1_2_4.py')
-          s = path.read_text()
-          old = r'@override\n  Widget build\(BuildContext context\) => Scaffold\(.*?\n\}'
-          new = r'@override\n  Widget build\(BuildContext context\) => Scaffold\(\n        appBar: AppBar\(.*?\n\}'
-          if old not in s:
-              raise SystemExit('No se encontró el patrón de build de Dashboard en prepare_1_2_4.py')
-          path.write_text(s.replace(old, new, 1))
+          p = Path('lib/main.dart')
+          s = p.read_text()
+          s = s.replace(r'C$', r'C\$')
+          p.write_text(s)
           PY
-          python3 scripts/prepare_1_2_4.py
       - name: Configurar Android para LAN, actualizaciones, segundo plano y compatibilidad
         run: |
           python3 - <<'PY'
@@ -110,7 +109,6 @@ jobs:
           grep -q "com.billaresdonmiguel/tv_cast" lib/main.dart
           grep -q "ACTION_CAST_SETTINGS" android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           grep -q "Pantalla exclusiva para TV" lib/main.dart
-          echo "Versión 1.2.4+124 y TV exclusiva verificadas"
       - name: Compilar APK release
         run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
       - name: Verificar APK generado
