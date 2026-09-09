@@ -109,7 +109,7 @@ for marker, message in required.items():
     if marker not in current:
         raise SystemExit(f'REPAIR TV FAILED: {message}')
 
-if 'return r\''' in current:
+if "return r'''" in current:
     raise SystemExit('REPAIR TV FAILED: delimitador Python quedó dentro del Dart generado')
 if 'replaceAll' in current and "replaceAll('\\\\', '\\\\\\\\')" in current:
     raise SystemExit('REPAIR TV FAILED: escape inválido en Dart generado')
