@@ -5,14 +5,14 @@ import py_compile
 TARGET = Path('lib/main.dart')
 source = TARGET.read_text()
 
-# Este script NO modifica ni fabrica código. La estructura completa de TV/LAN/mDNS
-# es responsabilidad de repair_tv_1_2_4.py. Aquí solo se comprueban invariantes
-# semánticas para impedir que una fuente incompleta avance a compilación.
+# Este script es únicamente un validador. No modifica ni fabrica código.
+# La reconstrucción completa de TV/LAN/mDNS pertenece al productor canónico
+# repair_tv_1_2_4.py. Las dependencias de Dart se validan por compilación/análisis,
+# no mediante requisitos textuales que puedan producir falsos negativos.
 py_compile.compile('scripts/repair_tv_1_2_4.py', doraise=True)
 
 normalized = re.sub(r'\s+', ' ', source)
 checks = (
-    ("import 'dart:io';" in source, 'import dart:io ausente'),
     (len(re.findall(r'\bHttpServer\s*\?\s*server\s*;', source)) == 1, 'campo HttpServer inválido'),
     (len(re.findall(r'\bString\s*\?\s*lanIp\s*;', source)) == 1, 'campo lanIp inválido'),
     (len(re.findall(r'\bFuture\s*<\s*void\s*>\s+startLanServer\s*\(\s*\)\s+async\s*\{', source)) == 1, 'startLanServer inválido'),
