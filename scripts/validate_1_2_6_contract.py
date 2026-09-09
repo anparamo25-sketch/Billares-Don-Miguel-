@@ -26,10 +26,11 @@ for name, marker in REQUIRED.items():
     if marker not in SOURCE and marker not in NORMALIZED:
         raise SystemExit(f'1.2.6 CONTRACT FAILED: falta {name}: {marker}')
 
-# Tarifas fijas: validar el contenido semántico de tableRates sin depender de
-# cómo Dart formatee la declaración de tipos/genéricos.
+# Tarifas fijas: reconocer correctamente la sintaxis Dart de un literal Map
+# tipado, incluyendo la forma `tableRates = <int, double>{...}` que produce
+# dart format, y comparar exactamente las cinco entradas esperadas.
 rate_decl = re.search(
-    r'(?s)(?:const\s+)?(?:Map\s*<\s*int\s*,\s*double\s*>\s+)?tableRates\s*=\s*\{([^}]*)\}',
+    r'(?s)\btableRates\s*=\s*(?:<\s*int\s*,\s*double\s*>\s*)?\{([^{}]*)\}',
     SOURCE,
 )
 if not rate_decl:
