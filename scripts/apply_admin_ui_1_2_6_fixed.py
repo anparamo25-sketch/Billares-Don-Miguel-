@@ -66,7 +66,7 @@ def statement_end(source, index):
         elif c == ';' and paren == 0 and bracket == 0 and brace == 0:
             return i + 1
         i += 1
-    raise SystemExit('ADMIN UI FAILED: expresión build sin terminar')
+    raise SystemExit('ADMIN UI FAILED: expresión sin terminar')
 
 
 def class_span(source, name):
@@ -106,6 +106,63 @@ def method_spans(source, class_start, class_end, marker):
     return positions
 
 
+def top_level_function_spans(source, marker):
+    positions = []
+    offset = 0
+    while True:
+        start = source.find(marker, offset)
+        if start < 0:
+            break
+        # A top-level function is identified by the function's opening brace.
+        brace = source.find('{', start)
+        if brace < 0:
+            break
+        end = brace_end(source, brace)
+        positions.append((start, end))
+        offset = end
+    return positions
+
+
+def repair_app_root(source):
+    class_start, class_end = class_span(source, 'BillaresApp')
+    builds = method_spans(source, class_start, class_end, 'Widget build(BuildContext context)')
+    if not builds:
+        raise SystemExit('ADMIN UI FAILED: build de BillaresApp ausente')
+
+    # BillaresApp debe contener únicamente el arranque de la aplicación.
+    # La interfaz administrativa pertenece exclusivamente a DashboardPage.
+    build_start, build_end = builds[-1]
+    clean_build = '''  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'Billares Don Miguel',
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        useMaterial3: true,
+        colorSchemeSeed: Colors.blue,
+      ),
+      home: const LoginPage(),
+    );
+  }'''
+    for start, end in sorted(builds, reverse=True):
+        source = source[:start] + source[end:]
+    class_start, class_end = class_span(source, 'BillaresApp')
+    insert_at = class_end - 1
+    source = source[:insert_at] + '\n' + clean_build + '\n' + source[insert_at:]
+    return source
+
+
+def remove_duplicate_local_ip(source):
+    spans = top_level_function_spans(source, 'Future<String?> _billaresLocalIp() async')
+    if len(spans) <= 1:
+        return source
+    # Preserve the first canonical implementation and remove every duplicate.
+    for start, end in sorted(spans[1:], reverse=True):
+        source = source[:start] + source[end:]
+    return source
+
+
 SUMMARY = r'''  Widget _summaryCard(String label, String value, Color color, IconData icon) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -134,28 +191,29 @@ SUMMARY = r'''  Widget _summaryCard(String label, String value, Color color, Ico
 '''
 
 source = TARGET.read_text()
-class_start, class_end = class_span(source, '_DashboardPageState')
 
+# First restore the actual Dart ownership of the widgets and remove the duplicate
+# top-level helper. These are structural corrections to the source, not regex patches.
+source = remove_duplicate_local_ip(source)
+source = repair_app_root(source)
+
+class_start, class_end = class_span(source, '_DashboardPageState')
 builds = method_spans(source, class_start, class_end, 'Widget build(BuildContext context)')
 if not builds:
     raise SystemExit('ADMIN UI FAILED: no existe build() dentro de _DashboardPageState')
 
-# La última build() es la versión administrativa nueva ya generada en la fuente.
-# Se conserva su cuerpo y se eliminan las versiones anteriores para dejar exactamente
-# un build() y un _summaryCard(), haciendo la transformación idempotente.
+# The last build is the intended administrative UI. Keep it, remove any previous or
+# duplicate implementations, and place exactly one summary helper plus one build in
+# _DashboardPageState.
 _, build_end = builds[-1]
 build_template = source[builds[-1][0]:build_end]
-
 summaries = method_spans(source, class_start, class_end, 'Widget _summaryCard(')
 remove_ranges = builds + summaries
 for start, end in sorted(remove_ranges, reverse=True):
     source = source[:start] + source[end:]
-    if start < class_end:
-        class_end -= end - start
 
-# Recalcular el cierre real de la clase después de eliminar métodos.
 class_start, class_end = class_span(source, '_DashboardPageState')
 insert_at = class_end - 1
-source = source[:insert_at] + '\n\n' + SUMMARY + build_template + source[insert_at:]
+source = source[:insert_at] + '\n\n' + SUMMARY + build_template + '\n' + source[insert_at:]
 TARGET.write_text(source)
-print('OK: interfaz administrativa normalizada estructuralmente en _DashboardPageState')
+print('OK: Dart reparado estructuralmente; BillaresApp y DashboardPage normalizados')
