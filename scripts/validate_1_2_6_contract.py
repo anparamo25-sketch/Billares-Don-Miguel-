@@ -29,15 +29,15 @@ for name, marker in REQUIRED.items():
 
 # Los puertos se validan semánticamente para no depender del formato que aplica dart format.
 for port in (80, 8080):
-    pattern = rf'HttpServer\\.bind\\(\\s*InternetAddress\\.anyIPv4\\s*,\\s*{port}\\b'
+    pattern = rf'HttpServer\.bind\(\s*InternetAddress\.anyIPv4\s*,\s*{port}\b'
     if not re.search(pattern, NORMALIZED):
         raise SystemExit(f'1.2.6 CONTRACT FAILED: servidor LAN sin soporte para puerto {port}')
 
 # Debe existir una sola implementación de cada pieza crítica.
 for pattern, name in (
-    (r'(?m)^\\s*Future<void>\\s+startLanServer\\s*\\(', 'startLanServer'),
-    (r'(?m)^\\s*Future<void>\\s+showTvConnection\\s*\\(', 'showTvConnection'),
-    (r'(?m)^\\s*String\\s+get\\s+tvHtml\\s*=>', 'tvHtml'),
+    (r'(?m)^\s*Future<void>\s+startLanServer\s*\(', 'startLanServer'),
+    (r'(?m)^\s*Future<void>\s+showTvConnection\s*\(', 'showTvConnection'),
+    (r'(?m)^\s*String\s+get\s+tvHtml\s*=>', 'tvHtml'),
 ):
     count = len(re.findall(pattern, SOURCE))
     if count != 1:
