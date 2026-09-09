@@ -6,6 +6,7 @@ TARGET = Path('lib/main.dart')
 
 # Deterministic source transformations used by the release build.
 subprocess.check_call(['python3', 'scripts/apply_admin_ui_1_2_6_fixed.py'])
+subprocess.check_call(['python3', 'scripts/force_admin_dashboard_1_2_7.py'])
 subprocess.check_call(['python3', 'scripts/fix_mdns_1_2_6.py'])
 subprocess.check_call(['python3', 'scripts/validate_generated_ui_1_2_6.py'])
 
@@ -40,4 +41,4 @@ if source.count('Future<void> _answerBillaresMdns') != 1 or source.count('Future
     raise SystemExit('1.2.6 SOURCE FAILED: funciones mDNS duplicadas o ausentes')
 
 TARGET.write_text(source)
-print('OK: fuente final 1.2.6 con interfaz administrativa nueva y mDNS corregido')
+print('OK: fuente final 1.2.6 con panel administrativo responsive forzado y mDNS corregido')
