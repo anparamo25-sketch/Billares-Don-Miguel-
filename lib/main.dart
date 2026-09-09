@@ -191,15 +191,6 @@ void main() => runApp(const BillaresApp());
 
 class BillaresApp extends StatelessWidget {
   const BillaresApp({super.key});
-  @override
-  
-
-  Widget _summaryCard(String label, String value, Color color, IconData icon) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-    decoration: BoxDecoration(color: color.withValues(alpha: .12), borderRadius: BorderRadius.circular(16), border: Border.all(color: color.withValues(alpha: .45))),
-    child: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[Icon(icon, color: color), const SizedBox(width: 8), Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[Text(label, style: const TextStyle(fontSize: 12)), Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900))])],
-  );
-
 
   @override
   Widget build(BuildContext context) {
