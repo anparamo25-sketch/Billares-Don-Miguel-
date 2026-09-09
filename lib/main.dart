@@ -16,7 +16,6 @@ const Map<int, double> tableRates = <int, double>{1: 120, 2: 120, 3: 100, 4: 100
 
 enum TableStatus { available, playing, pending }
 
-
 RawDatagramSocket? _billaresMdnsSocket;
 Future<String?> _billaresLocalIp() async {
   try {
@@ -491,7 +490,6 @@ int tab = 0;
     await response.close();
   }
 
-  
   HttpServer? server;
   String? lanIp;
   int? lanPort;
