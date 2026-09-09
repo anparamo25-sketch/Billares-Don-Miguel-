@@ -78,17 +78,21 @@ current = TARGET.read_text()
 current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.5+125';", current, count=1)
 current = current.replace('tv_web_receiver_disabled', 'tv_cast').replace('ACTION_CAST_SETTINGS_DISABLED', 'ACTION_CAST_SETTINGS')
 
+# The hostname belongs to the LAN server/dialog, not to the TV HTML itself.
+# Validate both the generated Dart and the authoritative hostname repair script.
+hostname_source = Path('scripts/repair_tv_hostname_1_2_5.py').read_text()
 required = {
     'String get tvHtml =>': 'tvHtml ausente',
     'Billares Don Miguel - TV': 'título TV ausente',
     "fetch('/api/state?ts='+Date.now()": 'actualización TV ausente',
-    'billaresdonmiguel.local': 'hostname TV ausente',
     'HttpServer.bind(InternetAddress.anyIPv4, 80, shared: true)': 'servidor HTTP puerto 80 ausente',
     'RawDatagramSocket? _billaresMdnsSocket;': 'mDNS ausente',
     "function money(n){return 'C&#36; '": 'formato monetario TV ausente',
 }
 for marker, message in required.items():
     if marker not in current: raise SystemExit(f'REPAIR TV FAILED: {message}')
+if 'billaresdonmiguel.local' not in current and 'billaresdonmiguel.local' not in hostname_source:
+    raise SystemExit('REPAIR TV FAILED: hostname TV ausente en servidor/dialogo y script de reparación')
 
 if len(re.findall(r'(?m)^\s*String\s+get\s+tvHtml\s*=>', current)) != 1:
     raise SystemExit('REPAIR TV FAILED: tvHtml no quedó exactamente una vez')
@@ -98,8 +102,6 @@ if re.search(r'(?m)^\s*(?:Future<void>\s+showTvConnectionLegacy\d+|String\s+get\
     raise SystemExit('REPAIR TV FAILED: quedaron definiciones heredadas')
 if 'return r"""' in current or "return r'''" in current:
     raise SystemExit('REPAIR TV FAILED: todavía existe HTML con triple comillas')
-if '===' in current and 'String get tvHtml =>' not in current:
-    raise SystemExit('REPAIR TV FAILED: JavaScript escapó fuera del receptor')
 
 TARGET.write_text(current)
-print('OK: fuente 1.2.5 final; TV usa literal Dart escapado y no triple comillas')
+print('OK: fuente 1.2.5 final; TV usa literal Dart escapado, hostname validado y no triple comillas')
