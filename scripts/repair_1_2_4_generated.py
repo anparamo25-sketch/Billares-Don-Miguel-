@@ -78,8 +78,6 @@ current = TARGET.read_text()
 current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.5+125';", current, count=1)
 current = current.replace('tv_web_receiver_disabled', 'tv_cast').replace('ACTION_CAST_SETTINGS_DISABLED', 'ACTION_CAST_SETTINGS')
 
-# The hostname belongs to the LAN server/dialog, not to the TV HTML itself.
-# Validate both the generated Dart and the authoritative hostname repair script.
 hostname_source = Path('scripts/repair_tv_hostname_1_2_5.py').read_text()
 required = {
     'String get tvHtml =>': 'tvHtml ausente',
@@ -94,14 +92,31 @@ for marker, message in required.items():
 if 'billaresdonmiguel.local' not in current and 'billaresdonmiguel.local' not in hostname_source:
     raise SystemExit('REPAIR TV FAILED: hostname TV ausente en servidor/dialogo y script de reparación')
 
-if len(re.findall(r'(?m)^\s*String\s+get\s+tvHtml\s*=>', current)) != 1:
-    raise SystemExit('REPAIR TV FAILED: tvHtml no quedó exactamente una vez')
+# Deterministic structural checks: never inspect HTML with a regex that can stop
+# at JavaScript semicolons. The getter must be exactly one physical Dart line.
+tv_getter_lines = [line for line in current.splitlines() if line.startswith('  String get tvHtml => ')]
+if len(tv_getter_lines) != 1:
+    raise SystemExit(f'REPAIR TV FAILED: tvHtml quedó {len(tv_getter_lines)} veces')
+tv_getter = tv_getter_lines[0]
+if not tv_getter.rstrip().endswith(';'):
+    raise SystemExit('REPAIR TV FAILED: getter tvHtml no termina correctamente en ;')
+if '<!doctype html>' not in tv_getter.lower():
+    raise SystemExit('REPAIR TV FAILED: el getter TV no contiene HTML válido')
+if '/api/state?ts=' not in tv_getter:
+    raise SystemExit('REPAIR TV FAILED: el receptor TV perdió su actualización de estado')
+if tv_getter.count('C&#36;') < 1:
+    raise SystemExit('REPAIR TV FAILED: el receptor TV perdió el formato monetario')
+if '===' in '\n'.join(line for line in current.splitlines() if not line.startswith('  String get tvHtml => ')):
+    raise SystemExit('REPAIR TV FAILED: JavaScript quedó fuera del getter TV')
+
 if len(re.findall(r'(?m)^\s*Future<void>\s+showTvConnection\s*\(\)\s+async\s*\{', current)) != 1:
     raise SystemExit('REPAIR TV FAILED: showTvConnection no quedó exactamente una vez')
 if re.search(r'(?m)^\s*(?:Future<void>\s+showTvConnectionLegacy\d+|String\s+get\s+tvHtmlLegacy\d+)', current):
     raise SystemExit('REPAIR TV FAILED: quedaron definiciones heredadas')
 if 'return r"""' in current or "return r'''" in current:
     raise SystemExit('REPAIR TV FAILED: todavía existe HTML con triple comillas')
+if 'String get tvHtml {' in current:
+    raise SystemExit('REPAIR TV FAILED: quedó getter tvHtml con bloque Dart antiguo')
 
 TARGET.write_text(current)
-print('OK: fuente 1.2.5 final; TV usa literal Dart escapado, hostname validado y no triple comillas')
+print('OK: fuente 1.2.5 final; TV validada estructuralmente, hostname validado y sin HTML heredado')
