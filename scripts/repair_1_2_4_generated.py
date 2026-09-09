@@ -6,7 +6,6 @@ import py_compile
 TARGET = Path('lib/main.dart')
 STABLE_COMMIT = '5e5ec88e7f6c12f5c1dae006ad95da4b903f950d'
 
-# Preflight: validar todos los generadores reales antes de modificar main.dart.
 for script in ('scripts/prepare_1_2_4.py', 'scripts/repair_1_2_4_generated.py', 'scripts/repair_tv_1_2_4.py', 'scripts/repair_tv_hostname_1_2_5.py'):
     try:
         py_compile.compile(script, doraise=True)
@@ -104,7 +103,7 @@ required = {
     'billaresdonmiguel.local': 'hostname TV ausente',
     'HttpServer.bind(InternetAddress.anyIPv4, 80, shared: true)': 'servidor HTTP puerto 80 ausente',
     'RawDatagramSocket? _billaresMdnsSocket;': 'mDNS ausente',
-    "function money(n){return 'C$ '": 'formato monetario TV ausente',
+    "function money(n){return 'C&#36; '": 'formato monetario TV ausente',
 }
 for marker, message in required.items():
     if marker not in current:
@@ -118,4 +117,4 @@ if 'ACTION_CAST_SETTINGS' in current and 'Duplicar pantalla' not in current:
     raise SystemExit('REPAIR TV FAILED: ruta de duplicación de pantalla no está identificada')
 
 TARGET.write_text(current)
-print('OK: 1.2.5 source repaired; TV estructuralmente separado del Dashboard')
+print('OK: 1.2.5 source repaired; TV estructuralmente separado del Dashboard; HTML monetario seguro')
