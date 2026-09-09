@@ -49,8 +49,6 @@ jobs:
           sdkmanager "platforms;android-${COMPILE_SDK}" "build-tools;36.0.0" "ndk;${NDK_VERSION}"
       - name: Generar plataforma Android limpia
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
-      - name: Preparar versión 1.2.4 y conectividad TV
-        run: python3 scripts/prepare_1_2_4.py
       - name: Corregir parche de interfaz 1.2.4
         run: |
           python3 - <<'PY'
