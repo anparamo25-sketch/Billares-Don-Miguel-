@@ -98,12 +98,23 @@ def match_paren(s, pos):
     raise SystemExit('mDNS ENSURE FAILED: paréntesis Dart sin cerrar')
 
 def owner_class(s, marker):
-    for m in reversed(list(re.finditer(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*\b', s[:marker + 1]))):
-        brace = s.find('{', m.end(), marker + 1)
+    # Locate the real enclosing Dart class from its declaration, without requiring
+    # any historical class name or assuming that the opening brace occurs before
+    # the searched marker. This matches the structure actually emitted by Flutter.
+    classes = list(re.finditer(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*\b', s))
+    candidates = []
+    for m in classes:
+        if m.start() > marker + 1: break
+        brace = s.find('{', m.end())
         if brace < 0: continue
-        try: end = match_brace(s, brace)
-        except SystemExit: continue
-        if marker < end: return m.start(), end
+        try:
+            end = match_brace(s, brace)
+        except SystemExit:
+            continue
+        if brace <= marker < end:
+            candidates.append((m.start(), end))
+    if candidates:
+        return candidates[-1]
     return None
 
 def remove_method(s, name):
@@ -122,12 +133,15 @@ def ensure_http_server(s):
         if re.search(r'InternetAddress\.anyIPv4\s*,\s*80\b', args): return s
         if re.search(r'InternetAddress\.anyIPv4\s*,\s*\d+', args):
             args = re.sub(r'(InternetAddress\.anyIPv4\s*,\s*)\d+', r'\g<1>80', args, count=1)
-        else: args = 'InternetAddress.anyIPv4, 80, shared: true'
+        else:
+            args = 'InternetAddress.anyIPv4, 80, shared: true'
         return s[:op + 1] + args + s[cp:]
-    marker = re.search(r'\bString\s+get\s+tvHtml\s*=>|\bMap<String,\s*dynamic>\s+stateMap\s*\(\)|\bFuture<void>\s+showTvConnection\s*\(', s)
-    if not marker: raise SystemExit('mDNS ENSURE FAILED: no se encontró receptor TV real')
+    marker = re.search(r'\bMap<String,\s*dynamic>\s+stateMap\s*\(\)|\bFuture<void>\s+showTvConnection\s*\(\)|\bString\s+get\s+tvHtml\s*=>', s)
+    if not marker:
+        raise SystemExit('mDNS ENSURE FAILED: no se encontró receptor TV real')
     own = owner_class(s, marker.start())
-    if not own: raise SystemExit('mDNS ENSURE FAILED: no se encontró la clase real del receptor TV')
+    if not own:
+        raise SystemExit('mDNS ENSURE FAILED: no se encontró la clase real del receptor TV')
     a, b = own
     server = '''  Future<void> startLanServer() async {
     try {
@@ -139,7 +153,12 @@ def ensure_http_server(s):
 '''
     inside = s[a:b]
     state = re.search(r'\bMap<String,\s*dynamic>\s+stateMap\s*\(\)', inside)
-    pos = a + state.start() if state else s.find('{', a, b) + 1
+    if state:
+        pos = a + state.start()
+    else:
+        brace = s.find('{', a, b)
+        if brace < 0: raise SystemExit('mDNS ENSURE FAILED: cuerpo de clase TV no encontrado')
+        pos = brace + 1
     return s[:pos] + server + '\n' + s[pos:]
 
 s = TARGET.read_text()
@@ -184,4 +203,4 @@ if '5353' not in s or '224.0.0.251' not in s: raise SystemExit('mDNS ENSURE FAIL
 if 'billaresdonmiguel.local' not in s: raise SystemExit('mDNS ENSURE FAILED: hostname ausente')
 
 TARGET.write_text(s)
-print('OK: servidor HTTP y mDNS reconstruidos sobre la estructura real del receptor TV')
+print('OK: servidor HTTP y mDNS alineados con la estructura Dart real del receptor TV')
