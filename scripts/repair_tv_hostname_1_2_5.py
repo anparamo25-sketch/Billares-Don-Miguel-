@@ -1,5 +1,6 @@
 from pathlib import Path
 import re
+import subprocess
 
 TARGET = Path('lib/main.dart')
 s = TARGET.read_text()
@@ -96,4 +97,5 @@ if 'server?.close(force: true);' in s and '_billaresMdnsSocket?.close();' not in
     s = s.replace('server?.close(force: true);', 'server?.close(force: true);\n      _billaresMdnsSocket?.close();', 1)
 
 TARGET.write_text(s)
-print('OK: hostname fijo billaresdonmiguel.local + mDNS + HTTP puerto 80')
+subprocess.check_call(['python3', 'scripts/repair_tv_final_safety.py'])
+print('OK: hostname fijo billaresdonmiguel.local + mDNS + HTTP puerto 80 + limpieza TV final')
