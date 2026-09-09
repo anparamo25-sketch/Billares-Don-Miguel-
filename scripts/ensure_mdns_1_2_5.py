@@ -2,7 +2,6 @@ from pathlib import Path
 import re
 
 TARGET = Path('lib/main.dart')
-
 FIELD = '  RawDatagramSocket? _billaresMdnsSocket;\n'
 METHODS = '''  Future<void> _startBillaresMdns() async {
     try {
@@ -15,9 +14,7 @@ METHODS = '''  Future<void> _startBillaresMdns() async {
       );
       _billaresMdnsSocket = socket;
       final InternetAddress multicast = InternetAddress('224.0.0.251');
-      try {
-        socket.joinMulticast(multicast);
-      } catch (_) {}
+      try { socket.joinMulticast(multicast); } catch (_) {}
       socket.listen((RawSocketEvent event) {
         if (event != RawSocketEvent.read) return;
         final Datagram? datagram = socket.receive();
@@ -46,9 +43,7 @@ METHODS = '''  Future<void> _startBillaresMdns() async {
         if (offset + 4 > q.length) return;
         final int type = (q[offset] << 8) | q[offset + 1];
         offset += 4;
-        if (labels.join('.').toLowerCase() == 'billaresdonmiguel.local' && (type == 1 || type == 255)) {
-          matched = true;
-        }
+        if (labels.join('.').toLowerCase() == 'billaresdonmiguel.local' && (type == 1 || type == 255)) matched = true;
       }
       if (!matched || lanIp == null) return;
       final List<int> ip = lanIp!.split('.').map(int.parse).toList();
@@ -65,137 +60,145 @@ METHODS = '''  Future<void> _startBillaresMdns() async {
 '''
 
 
-def find_matching_brace(source: str, open_pos: int) -> int:
+def matching_brace(source: str, open_pos: int) -> int:
     depth = 0
-    i = open_pos
     quote = None
     triple = False
+    i = open_pos
     while i < len(source):
         if quote:
             token = quote * 3 if triple else quote
             if source.startswith(token, i):
-                i += len(token)
-                quote = None
-                triple = False
-                continue
+                i += len(token); quote = None; triple = False; continue
             if source[i] == '\\' and not triple:
-                i += 2
-                continue
-            i += 1
-            continue
-        if source.startswith("'''", i):
-            quote, triple = "'", True
-            i += 3
-            continue
-        if source.startswith('"""', i):
-            quote, triple = '"', True
-            i += 3
-            continue
-        if source[i] in ("'", '"'):
-            quote, triple = source[i], False
-            i += 1
-            continue
+                i += 2; continue
+            i += 1; continue
+        if source.startswith("'''", i): quote, triple = "'", True; i += 3; continue
+        if source.startswith('"""', i): quote, triple = '"', True; i += 3; continue
+        if source[i] in ("'", '"'): quote, triple = source[i], False; i += 1; continue
         if source.startswith('//', i):
-            end = source.find('\n', i + 2)
-            i = len(source) if end < 0 else end + 1
-            continue
+            end = source.find('\n', i + 2); i = len(source) if end < 0 else end + 1; continue
         if source.startswith('/*', i):
-            end = source.find('*/', i + 2)
-            i = len(source) if end < 0 else end + 2
-            continue
-        if source[i] == '{':
-            depth += 1
+            end = source.find('*/', i + 2); i = len(source) if end < 0 else end + 2; continue
+        if source[i] == '{': depth += 1
         elif source[i] == '}':
             depth -= 1
-            if depth == 0:
-                return i + 1
+            if depth == 0: return i + 1
         i += 1
     raise SystemExit('mDNS ENSURE FAILED: llaves Dart sin cerrar')
 
 
-def dashboard_span(source: str):
-    match = re.search(r'(?m)^class\s+_DashboardPageState\b[^\{]*\{', source)
-    if not match:
-        raise SystemExit('mDNS ENSURE FAILED: no se encontró _DashboardPageState')
-    brace = source.find('{', match.start())
-    return match.start(), find_matching_brace(source, brace)
+def all_class_spans(source: str):
+    spans = []
+    for match in re.finditer(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*\b[^\{]*\{', source):
+        brace = source.find('{', match.start())
+        try:
+            end = matching_brace(source, brace)
+        except SystemExit:
+            continue
+        spans.append((match.start(), end, source[match.start():end]))
+    return spans
 
 
 def remove_method(source: str, pattern: re.Pattern) -> str:
     while True:
         match = pattern.search(source)
-        if not match:
-            return source
+        if not match: return source
         brace = source.find('{', match.start(), match.end())
-        end = find_matching_brace(source, brace)
+        if brace < 0: return source
+        end = matching_brace(source, brace)
         source = source[:match.start()] + source[end:]
 
 
 s = TARGET.read_text()
-class_start, class_end = dashboard_span(s)
-owner = s[class_start:class_end]
+classes = all_class_spans(s)
+# Find the actual class that owns the HTTP listener. No dependency on any
+# historical class name such as _DashboardPageState or method name startLanServer.
+owner = None
+for a, b, text in classes:
+    if re.search(r'server!\.listen\(\s*handleRequest\b', text):
+        owner = (a, b, text)
+        break
+if owner is None:
+    raise SystemExit('mDNS ENSURE FAILED: no se encontró el servidor HTTP del receptor TV')
 
-# Work only inside the Dashboard class. This makes the operation independent of
-# method names that may change during source preparation.
-if FIELD.strip() not in owner:
+class_start, class_end, owner_text = owner
+
+if FIELD.strip() not in owner_text:
     insert_at = s.find('{', class_start) + 1
     s = s[:insert_at] + '\n' + FIELD + s[insert_at:]
-    class_start, class_end = dashboard_span(s)
-    owner = s[class_start:class_end]
 
+# Recalculate the owning class after the field insertion.
+for a, b, text in all_class_spans(s):
+    if re.search(r'server!\.listen\(\s*handleRequest\b', text):
+        class_start, class_end, owner_text = a, b, text
+        break
+else:
+    raise SystemExit('mDNS ENSURE FAILED: se perdió el servidor HTTP tras insertar socket')
+
+# Remove only our generated mDNS methods, wherever they are in the source,
+# then insert one clean copy inside the owning server class.
 s = remove_method(s, re.compile(r'(?m)^\s*Future<void>\s+_startBillaresMdns\s*\(\)\s+async\s*\{'))
 s = remove_method(s, re.compile(r'(?m)^\s*void\s+_answerBillaresMdns\s*\(RawDatagramSocket\s+socket,\s*Datagram\s+datagram\)\s*\{'))
 
-class_start, class_end = dashboard_span(s)
-owner = s[class_start:class_end]
-
-# Insert the two mDNS methods immediately before stateMap when available; otherwise
-# use the end of the Dashboard class. No dependency on startLanServer is required.
-marker = re.search(r'(?m)^\s*Map<String,\s*dynamic>\s+stateMap\s*\(\)', owner)
-if marker:
-    absolute = class_start + marker.start()
+for a, b, text in all_class_spans(s):
+    if re.search(r'server!\.listen\(\s*handleRequest\b', text):
+        class_start, class_end, owner_text = a, b, text
+        break
 else:
-    absolute = class_end - 1
+    raise SystemExit('mDNS ENSURE FAILED: servidor HTTP ausente después de limpiar mDNS')
+
+marker = re.search(r'(?m)^\s*Map<String,\s*dynamic>\s+stateMap\s*\(\)', owner_text)
+absolute = class_start + marker.start() if marker else class_end - 1
 s = s[:absolute] + METHODS + '\n' + s[absolute:]
 
-# Find the actual HTTP listener in Dashboard and make mDNS startup exactly once.
-class_start, class_end = dashboard_span(s)
-owner = s[class_start:class_end]
-listener_matches = list(re.finditer(r'server!\.listen\(\s*handleRequest\b[^;]*\);', owner))
-if not listener_matches:
-    raise SystemExit('mDNS ENSURE FAILED: no se encontró el listener HTTP del Dashboard')
+# Recalculate and attach startup to the real HTTP listener exactly once.
+for a, b, text in all_class_spans(s):
+    if re.search(r'server!\.listen\(\s*handleRequest\b', text):
+        class_start, class_end, owner_text = a, b, text
+        break
+else:
+    raise SystemExit('mDNS ENSURE FAILED: listener HTTP ausente al finalizar')
 
-owner = re.sub(r'\n\s*await\s+_startBillaresMdns\(\);', '', owner)
-listener_matches = list(re.finditer(r'server!\.listen\(\s*handleRequest\b[^;]*\);', owner))
-listener = listener_matches[0]
+owner_text = re.sub(r'\n\s*await\s+_startBillaresMdns\(\);', '', owner_text)
+listener = re.search(r'server!\.listen\(\s*handleRequest\b[^;]*\);', owner_text)
+if not listener:
+    raise SystemExit('mDNS ENSURE FAILED: listener HTTP no reconocido')
 pos = listener.end()
-owner = owner[:pos] + '\n      await _startBillaresMdns();' + owner[pos:]
-s = s[:class_start] + owner + s[class_end:]
+owner_text = owner_text[:pos] + '\n      await _startBillaresMdns();' + owner_text[pos:]
+s = s[:class_start] + owner_text + s[class_end:]
 
-class_start, class_end = dashboard_span(s)
-owner = s[class_start:class_end]
+# Semantic validation over the actual owning class.
+for a, b, text in all_class_spans(s):
+    if re.search(r'server!\.listen\(\s*handleRequest\b', text):
+        owner_text = text
+        break
+else:
+    raise SystemExit('mDNS ENSURE FAILED: clase del servidor no encontrada al validar')
+
 checks = (
     FIELD.strip(),
     'Future<void> _startBillaresMdns() async',
     'void _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram)',
     'await _startBillaresMdns();',
-    'billaresdonmiguel.local',
     'RawDatagramSocket.bind',
     '5353',
     '224.0.0.251',
     'server!.listen(handleRequest',
 )
 for marker in checks:
-    if marker not in owner:
+    if marker not in owner_text:
         raise SystemExit('mDNS ENSURE FAILED: componente ausente: ' + marker)
-if owner.count(FIELD.strip()) != 1:
+if 'billaresdonmiguel.local' not in s:
+    raise SystemExit('mDNS ENSURE FAILED: hostname ausente')
+if owner_text.count(FIELD.strip()) != 1:
     raise SystemExit('mDNS ENSURE FAILED: socket mDNS duplicado')
-if owner.count('Future<void> _startBillaresMdns() async') != 1:
+if owner_text.count('Future<void> _startBillaresMdns() async') != 1:
     raise SystemExit('mDNS ENSURE FAILED: método mDNS duplicado')
-if owner.count('void _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram)') != 1:
+if owner_text.count('void _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram)') != 1:
     raise SystemExit('mDNS ENSURE FAILED: respuesta mDNS duplicada')
-if owner.count('await _startBillaresMdns();') != 1:
+if owner_text.count('await _startBillaresMdns();') != 1:
     raise SystemExit('mDNS ENSURE FAILED: arranque mDNS duplicado')
 
 TARGET.write_text(s)
-print('OK: mDNS reconstruido dentro de _DashboardPageState, independiente del nombre de startLanServer')
+print('OK: mDNS instalado por estructura del servidor, independiente de nombres históricos de clases y métodos')
