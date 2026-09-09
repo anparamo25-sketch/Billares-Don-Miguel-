@@ -2,8 +2,9 @@ from pathlib import Path
 import re
 
 TARGET = Path('lib/main.dart')
+
 FIELD = '  RawDatagramSocket? _billaresMdnsSocket;\n'
-METHOD = '''  Future<void> _startBillaresMdns() async {
+METHODS = '''  Future<void> _startBillaresMdns() async {
     try {
       _billaresMdnsSocket?.close();
       final RawDatagramSocket socket = await RawDatagramSocket.bind(
@@ -54,14 +55,13 @@ METHOD = '''  Future<void> _startBillaresMdns() async {
       if (ip.length != 4) return;
       final List<int> response = <int>[];
       response.addAll(q.sublist(0, 2));
-      response.addAll(<int>[0x84, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]);
+      response.addAll(<int>[0x84, 0x00, (qdCount >> 8) & 0xff, qdCount & 0xff, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]);
       response.addAll(q.sublist(12, offset));
       response.addAll(<int>[0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x78, 0x00, 0x04]);
       response.addAll(ip);
-      socket.send(response, datagram.address, 5353);
+      socket.send(response, datagram.address, datagram.port);
     } catch (_) {}
   }
-
 '''
 
 
@@ -113,87 +113,89 @@ def find_matching_brace(source: str, open_pos: int) -> int:
     raise SystemExit('mDNS ENSURE FAILED: llaves Dart sin cerrar')
 
 
-def class_containing(source: str, position: int):
-    matches = list(re.finditer(r'(?m)^class\s+[^\n\{]+\{', source))
-    owner = None
-    for match in matches:
-        end = find_matching_brace(source, source.find('{', match.start()))
-        if match.start() <= position < end:
-            owner = (match.start(), end, match)
-            break
-    if owner is None:
-        raise SystemExit('mDNS ENSURE FAILED: startLanServer no pertenece a una clase Dart')
-    return owner
+def dashboard_span(source: str):
+    match = re.search(r'(?m)^class\s+_DashboardPageState\b[^\{]*\{', source)
+    if not match:
+        raise SystemExit('mDNS ENSURE FAILED: no se encontró _DashboardPageState')
+    brace = source.find('{', match.start())
+    return match.start(), find_matching_brace(source, brace)
+
+
+def remove_method(source: str, pattern: re.Pattern) -> str:
+    while True:
+        match = pattern.search(source)
+        if not match:
+            return source
+        brace = source.find('{', match.start(), match.end())
+        end = find_matching_brace(source, brace)
+        source = source[:match.start()] + source[end:]
 
 
 s = TARGET.read_text()
-start_match = re.search(r'(?m)^\s*Future<void>\s+startLanServer\s*\(\)\s+async\s*\{', s)
-if not start_match:
-    raise SystemExit('mDNS ENSURE FAILED: no se encontró startLanServer')
-class_start, class_end, _ = class_containing(s, start_match.start())
+class_start, class_end = dashboard_span(s)
+owner = s[class_start:class_end]
 
-# Rebuild mDNS only inside the same Dart class that owns startLanServer.
-# This prevents fields/methods from landing in unrelated classes.
-if FIELD.strip() not in s[class_start:class_end]:
+# Work only inside the Dashboard class. This makes the operation independent of
+# method names that may change during source preparation.
+if FIELD.strip() not in owner:
     insert_at = s.find('{', class_start) + 1
     s = s[:insert_at] + '\n' + FIELD + s[insert_at:]
-    start_match = re.search(r'(?m)^\s*Future<void>\s+startLanServer\s*\(\)\s+async\s*\{', s)
-    class_start, class_end, _ = class_containing(s, start_match.start())
+    class_start, class_end = dashboard_span(s)
+    owner = s[class_start:class_end]
 
-# Remove only previous mDNS definitions if present, then insert exactly one copy.
-method_matches = list(re.finditer(r'(?m)^\s*Future<void>\s+_startBillaresMdns\s*\(\)\s+async\s*\{', s))
-for match in reversed(method_matches):
-    end = find_matching_brace(s, s.find('{', match.start()))
-    s = s[:match.start()] + s[end:]
+s = remove_method(s, re.compile(r'(?m)^\s*Future<void>\s+_startBillaresMdns\s*\(\)\s+async\s*\{'))
+s = remove_method(s, re.compile(r'(?m)^\s*void\s+_answerBillaresMdns\s*\(RawDatagramSocket\s+socket,\s*Datagram\s+datagram\)\s*\{'))
 
-answer_matches = list(re.finditer(r'(?m)^\s*void\s+_answerBillaresMdns\s*\(RawDatagramSocket\s+socket,\s*Datagram\s+datagram\)\s*\{', s))
-for match in reversed(answer_matches):
-    end = find_matching_brace(s, s.find('{', match.start()))
-    s = s[:match.start()] + s[end:]
+class_start, class_end = dashboard_span(s)
+owner = s[class_start:class_end]
 
-start_match = re.search(r'(?m)^\s*Future<void>\s+startLanServer\s*\(\)\s+async\s*\{', s)
-class_start, class_end, _ = class_containing(s, start_match.start())
-s = s[:start_match.start()] + METHOD + s[start_match.start():]
+# Insert the two mDNS methods immediately before stateMap when available; otherwise
+# use the end of the Dashboard class. No dependency on startLanServer is required.
+marker = re.search(r'(?m)^\s*Map<String,\s*dynamic>\s+stateMap\s*\(\)', owner)
+if marker:
+    absolute = class_start + marker.start()
+else:
+    absolute = class_end - 1
+s = s[:absolute] + METHODS + '\n' + s[absolute:]
 
-# Insert startup inside startLanServer, immediately after the actual HTTP listener.
-start_match = re.search(r'(?m)^\s*Future<void>\s+startLanServer\s*\(\)\s+async\s*\{', s)
-method_end = find_matching_brace(s, s.find('{', start_match.start()))
-body = s[start_match.start():method_end]
-if 'server!.listen(handleRequest);' not in body:
-    raise SystemExit('mDNS ENSURE FAILED: startLanServer no contiene server!.listen(handleRequest)')
-if body.count('await _startBillaresMdns();') > 0:
-    body = re.sub(r'\n\s*await _startBillaresMdns\(\);', '', body)
-listener = 'server!.listen(handleRequest);'
-pos = body.find(listener) + len(listener)
-body = body[:pos] + '\n      await _startBillaresMdns();' + body[pos:]
-s = s[:start_match.start()] + body + s[method_end:]
+# Find the actual HTTP listener in Dashboard and make mDNS startup exactly once.
+class_start, class_end = dashboard_span(s)
+owner = s[class_start:class_end]
+listener_matches = list(re.finditer(r'server!\.listen\(\s*handleRequest\b[^;]*\);', owner))
+if not listener_matches:
+    raise SystemExit('mDNS ENSURE FAILED: no se encontró el listener HTTP del Dashboard')
 
-# Validate semantic invariants, not fragile source formatting.
-start_match = re.search(r'(?m)^\s*Future<void>\s+startLanServer\s*\(\)\s+async\s*\{', s)
-class_start, class_end, _ = class_containing(s, start_match.start())
+owner = re.sub(r'\n\s*await\s+_startBillaresMdns\(\);', '', owner)
+listener_matches = list(re.finditer(r'server!\.listen\(\s*handleRequest\b[^;]*\);', owner))
+listener = listener_matches[0]
+pos = listener.end()
+owner = owner[:pos] + '\n      await _startBillaresMdns();' + owner[pos:]
+s = s[:class_start] + owner + s[class_end:]
+
+class_start, class_end = dashboard_span(s)
 owner = s[class_start:class_end]
 checks = (
     FIELD.strip(),
     'Future<void> _startBillaresMdns() async',
     'void _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram)',
     'await _startBillaresMdns();',
-    "billaresdonmiguel.local",
+    'billaresdonmiguel.local',
     'RawDatagramSocket.bind',
     '5353',
     '224.0.0.251',
-    'server!.listen(handleRequest);',
+    'server!.listen(handleRequest',
 )
 for marker in checks:
     if marker not in owner:
         raise SystemExit('mDNS ENSURE FAILED: componente ausente: ' + marker)
+if owner.count(FIELD.strip()) != 1:
+    raise SystemExit('mDNS ENSURE FAILED: socket mDNS duplicado')
 if owner.count('Future<void> _startBillaresMdns() async') != 1:
     raise SystemExit('mDNS ENSURE FAILED: método mDNS duplicado')
 if owner.count('void _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram)') != 1:
     raise SystemExit('mDNS ENSURE FAILED: respuesta mDNS duplicada')
-if owner.count('RawDatagramSocket? _billaresMdnsSocket;') != 1:
-    raise SystemExit('mDNS ENSURE FAILED: socket mDNS duplicado')
 if owner.count('await _startBillaresMdns();') != 1:
     raise SystemExit('mDNS ENSURE FAILED: arranque mDNS duplicado')
 
 TARGET.write_text(s)
-print('OK: mDNS reconstruido de forma determinista dentro de la clase que contiene startLanServer')
+print('OK: mDNS reconstruido dentro de _DashboardPageState, independiente del nombre de startLanServer')
