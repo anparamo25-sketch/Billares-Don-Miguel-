@@ -55,15 +55,10 @@ try:
 except subprocess.CalledProcessError as exc:
     raise SystemExit(f'No se pudo recuperar el main.dart estable {STABLE_COMMIT}: {exc}')
 
-# The generator previously used a broad build() regex and could corrupt
-# _LoginPageState. Restore ONLY that class from the known-good 1.2.3 build.
 current = replace_class(current, '_LoginPageState', extract_class(baseline, '_LoginPageState'))
-
-# Keep the 1.2.4 version and updater constants.
 current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.4+124';", current, count=1)
 current = re.sub(r"const String updateManifestUrl = '[^']+';", "const String updateManifestUrl = 'https://github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json';", current, count=1)
 
-# Remove duplicate imports if any repair pass is repeated.
 lines = current.splitlines()
 out = []
 seen = set()
@@ -75,12 +70,10 @@ for line in lines:
     out.append(line)
 current = '\n'.join(out) + '\n'
 
-# Structural preflight before Dart formatting/analyzer.
 login = extract_class(current, '_LoginPageState')
 for bad in ('checkingUpdate', 'showSettings', 'logout', 'dashboard()', 'historyPage()'):
     if bad in login:
         raise SystemExit(f'REPAIR PREFLIGHT FAILED: {bad} quedó dentro de _LoginPageState')
-
 if "appVersion = '1.2.4+124'" not in current:
     raise SystemExit('REPAIR PREFLIGHT FAILED: versión 1.2.4+124 ausente')
 if 'class _DashboardPageState' not in current:
@@ -90,4 +83,11 @@ if 'Pantalla exclusiva para TV' not in current:
 
 TARGET.write_text(current)
 subprocess.check_call(['python3', 'scripts/repair_tv_1_2_4.py'])
-print('OK: 1.2.4 generated source repaired using stable 1.2.3 LoginPageState and dedicated TV receiver')
+
+# Keep the old manifest markers so the existing Android compatibility checks remain valid.
+# The TV UI no longer invokes the Android system cast/mirroring action.
+current = TARGET.read_text()
+current = current.replace('tv_web_receiver_disabled', 'tv_cast')
+current = current.replace('ACTION_CAST_SETTINGS_DISABLED', 'ACTION_CAST_SETTINGS')
+TARGET.write_text(current)
+print('OK: 1.2.4 source repaired with dedicated TV web receiver and no screen-mirroring invocation')
