@@ -26,19 +26,21 @@ for name, marker in REQUIRED.items():
     if marker not in SOURCE and marker not in NORMALIZED:
         raise SystemExit(f'1.2.6 CONTRACT FAILED: falta {name}: {marker}')
 
-# Tarifas fijas: reconocer correctamente la sintaxis Dart de un literal Map
-# tipado, incluyendo la forma `tableRates = <int, double>{...}` que produce
-# dart format, y comparar exactamente las cinco entradas esperadas.
+# Tarifas fijas: leer la declaración real de tableRates y validar cada entrada.
+# dart format puede convertir el literal a varias líneas y añadir una coma final,
+# por lo que no se debe comparar el cuerpo como una cadena exacta.
 rate_decl = re.search(
-    r'(?s)\btableRates\s*=\s*(?:<\s*int\s*,\s*double\s*>\s*)?\{([^{}]*)\}',
+    r'\btableRates\s*=\s*(?:<\s*int\s*,\s*double\s*>\s*)?\{([^{}]*)\}',
     SOURCE,
+    flags=re.S,
 )
 if not rate_decl:
     raise SystemExit('1.2.6 CONTRACT FAILED: tarifas fijas incorrectas o ausentes')
 
-rate_body = re.sub(r'\s+', '', rate_decl.group(1))
-expected_rates = '1:120,2:120,3:100,4:100,5:70'
-if rate_body != expected_rates:
+entries = re.findall(r'(\d+)\s*:\s*(\d+(?:\.\d+)?)', rate_decl.group(1))
+actual_rates = {int(table): float(rate) for table, rate in entries}
+expected_rates = {1: 120.0, 2: 120.0, 3: 100.0, 4: 100.0, 5: 70.0}
+if actual_rates != expected_rates or len(entries) != len(expected_rates):
     raise SystemExit('1.2.6 CONTRACT FAILED: tarifas fijas incorrectas o ausentes')
 
 # Los puertos se validan semánticamente para no depender del formato que aplica dart format.
