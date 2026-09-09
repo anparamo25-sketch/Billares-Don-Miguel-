@@ -46,7 +46,7 @@ def brace_end(s, start):
     raise SystemExit('TV REBUILD FAILED: llaves sin cerrar')
 
 
-def semicolon_end(s, start):
+def statement_end(s, start):
     i = start
     while i < len(s):
         if s[i] in "'\"":
@@ -77,16 +77,13 @@ def remove_getter(s, name):
         m = p.search(s)
         if not m:
             return s
-        if '{' in m.group(0):
-            end = brace_end(s, s.find('{', m.start(), m.end()))
-        else:
-            end = semicolon_end(s, m.end())
+        end = brace_end(s, s.find('{', m.start(), m.end())) if '{' in m.group(0) else statement_end(s, m.end())
         s = s[:m.start()] + s[end:]
 
 
 def class_span(s, pos):
-    classes = list(re.finditer(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*[^\{]*\{', s[:pos]))
-    for m in reversed(classes):
+    candidates = list(re.finditer(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*[^\{]*\{', s[:pos]))
+    for m in reversed(candidates):
         end = brace_end(s, s.find('{', m.start(), m.end()))
         if end > pos:
             return m.start(), end
@@ -99,20 +96,20 @@ def escape_plain_dollars(s):
     while i < len(s):
         if s[i] in "'\"":
             start = i
+            triple = s.startswith(s[i] * 3, i)
             end = skip_string(s, i)
-            token = s[start:start + (3 if s.startswith(s[i] * 3, i) else 1)]
             body = s[start:end]
-            if len(token) == 1:
-                fixed = []
+            if not triple:
+                chars = []
                 j = 0
                 while j < len(body):
                     if body[j] == '\\' and j + 1 < len(body):
-                        fixed.append(body[j:j + 2]); j += 2
+                        chars.append(body[j:j + 2]); j += 2
                     elif body[j] == '$' and (j + 1 == len(body) or (body[j + 1] not in '{' and not (body[j + 1].isalpha() or body[j + 1] == '_'))):
-                        fixed.append('\\$'); j += 1
+                        chars.append('\\$'); j += 1
                     else:
-                        fixed.append(body[j]); j += 1
-                body = ''.join(fixed)
+                        chars.append(body[j]); j += 1
+                body = ''.join(chars)
             out.append(body); i = end
         else:
             out.append(s[i]); i += 1
@@ -126,15 +123,12 @@ for imp in ("import 'dart:io';", "import 'dart:convert';", "import 'package:flut
         at = imports[-1].end() if imports else 0
         source = source[:at] + imp + '\n' + source[at:]
 
-# Find the real class by its stable stateMap method; never assume a class name.
 marker = re.search(r'\bMap\s*<\s*String\s*,\s*dynamic\s*>\s+stateMap\s*\(\s*\)', source)
 if not marker:
     raise SystemExit('TV REBUILD FAILED: stateMap ausente')
 class_start, class_end = class_span(source, marker.start())
 class_source = source[class_start:class_end]
-state = re.search(r'\bMap\s*<\s*String\s*,\s*dynamic\s*>\s+stateMap\s*\(\s*\)', class_source)
 
-# Remove all previous TV/LAN declarations structurally, preserving handleRequest and the rest of the app.
 for name in ('startLanServer', 'showTvConnection'):
     class_source = remove_method(class_source, name)
 for name in ('tvHtml', 'tvHtmlLegacy1', 'tvHtmlLegacy2', 'tvHtmlLegacy3'):
@@ -208,8 +202,8 @@ Future<void> _startBillaresMdns() async {
   } catch (_) {}
 }
 '''
-first_class = re.search(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*', source)
-source = source[:first_class.start()] + mdns + '\n' + source[first_class.start():]
+first = re.search(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*', source)
+source = source[:first.start()] + mdns + '\n' + source[first.start():]
 
 marker = re.search(r'\bMap\s*<\s*String\s*,\s*dynamic\s*>\s+stateMap\s*\(\s*\)', source)
 class_start, class_end = class_span(source, marker.start())
