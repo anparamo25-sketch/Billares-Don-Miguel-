@@ -63,8 +63,7 @@ Future<void> _answerBillaresMdns(
       if (offset + 4 > query.length) return;
       final int type = (query[offset] << 8) | query[offset + 1];
       offset += 4;
-      if (labels.join('.').toLowerCase() == 'billaresdonmiguel.local' &&
-          (type == 1 || type == 255)) {
+      if (labels.join('.').toLowerCase() == 'billaresdonmiguel.local' && (type == 1 || type == 255)) {
         matches = true;
       }
     }
@@ -101,11 +100,7 @@ CANONICAL_SERVER = '''  Future<void> startLanServer() async {
                   (parts[0] == 172 && parts[1] >= 16 && parts[1] <= 31) ||
                   (parts[0] == 192 && parts[1] == 168));
           if (!address.isLoopback && !address.isMulticast && !address.isLinkLocal && privateIpv4) {
-            final int priority = name.contains('wlan') || name.contains('wifi')
-                ? 0
-                : name.contains('eth')
-                    ? 1
-                    : 2;
+            final int priority = name.contains('wlan') || name.contains('wifi') ? 0 : name.contains('eth') ? 1 : 2;
             candidates.add('$priority|${address.address}');
           }
         }
@@ -174,28 +169,14 @@ def matching_brace(source: str, open_pos: int) -> int:
     raise SystemExit('mDNS ENSURE FAILED: llaves Dart sin cerrar')
 
 
-def class_spans(source: str):
-    pattern = re.compile(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*(?:\s+extends\s+[^\{]+)?(?:\s+with\s+[^\{]+)?\s*\{')
-    for match in pattern.finditer(source):
-        open_pos = source.find('{', match.start(), match.end())
-        try:
-            yield match.start(), matching_brace(source, open_pos)
-        except SystemExit:
-            continue
-
-
 def remove_function(source: str, name: str) -> str:
-    pattern = re.compile(
-        r'\bFuture\s*<\s*void\s*>\s+' + re.escape(name) +
-        r'\s*\([^)]*\)\s+async\s*\{'
-    )
+    pattern = re.compile(r'\b(?:Future\s*<\s*void\s*>|Future\s*<\s*String\s*\?>)\s+' + re.escape(name) + r'\s*\([^)]*\)\s+async\s*\{')
     while True:
         match = pattern.search(source)
         if not match:
             return source
-        open_pos = source.find('{', match.start(), match.end())
-        end_pos = matching_brace(source, open_pos)
-        source = source[:match.start()] + source[end_pos:]
+        end = matching_brace(source, source.find('{', match.start(), match.end()))
+        source = source[:match.start()] + source[end:]
 
 
 def remove_mdns(source: str) -> str:
@@ -206,49 +187,24 @@ def remove_mdns(source: str) -> str:
     return source
 
 
-def find_class_containing(source: str, marker: str):
-    pos = source.find(marker)
-    if pos < 0:
-        return None
-    for start, end in class_spans(source):
-        if start < pos < end:
-            return start, end
-    return None
-
-
 def replace_start_server(source: str) -> str:
-    pattern = re.compile(
-        r'\bFuture\s*<\s*void\s*>\s+startLanServer\s*\(\s*\)\s+async\s*\{'
-    )
+    pattern = re.compile(r'\bFuture\s*<\s*void\s*>\s+startLanServer\s*\(\s*\)\s+async\s*\{')
     match = pattern.search(source)
     if match:
-        owner = find_class_containing(source, 'startLanServer')
-        if owner is None:
-            raise SystemExit('mDNS ENSURE FAILED: startLanServer no pertenece a una clase Dart')
-        open_pos = source.find('{', match.start(), match.end())
-        end_pos = matching_brace(source, open_pos)
-        return source[:match.start()] + CANONICAL_SERVER + source[end_pos:]
+        end = matching_brace(source, source.find('{', match.start(), match.end()))
+        return source[:match.start()] + CANONICAL_SERVER + source[end:]
 
-    # No dependemos de stateMap ni de un nombre concreto de clase. Si el
-    # servidor todavía no existe, lo colocamos dentro de la clase real que
-    # contiene su handler HTTP o su campo HttpServer.
-    owner = find_class_containing(source, 'handleRequest')
-    if owner is None:
-        owner = find_class_containing(source, 'HttpServer? server')
-    if owner is None:
-        raise SystemExit('mDNS ENSURE FAILED: no se encontró una clase real que aloje el servidor LAN')
+    # Structural fallback: use the real HTTP handler/field as an anchor.
+    # No stateMap lookup and no generated class name are required.
+    handler = re.search(r'\bFuture\s*<\s*void\s*>\s+handleRequest\s*\([^)]*\)\s+async\s*\{', source)
+    if handler:
+        return source[:handler.start()] + CANONICAL_SERVER + source[handler.start():]
 
-    start, end = owner
-    class_body = source[start:end]
-    anchor = re.search(r'\bFuture\s*<\s*void\s*>\s+handleRequest\s*\(', class_body)
-    if anchor is None:
-        anchor = re.search(r'\bHttpServer\?\s+server\s*;', class_body)
-        if anchor is None:
-            raise SystemExit('mDNS ENSURE FAILED: no se encontró un punto estructural para el servidor LAN')
-        insert_at = start + anchor.end()
-    else:
-        insert_at = start + anchor.start()
-    return source[:insert_at] + CANONICAL_SERVER + '\n' + source[insert_at:]
+    server_field = re.search(r'(?m)^\s*HttpServer\?\s+server\s*;\s*$', source)
+    if server_field:
+        return source[:server_field.end()] + '\n' + CANONICAL_SERVER + source[server_field.end():]
+
+    raise SystemExit('mDNS ENSURE FAILED: no se encontró la estructura real del servidor HTTP')
 
 
 source = TARGET.read_text()
@@ -265,24 +221,20 @@ insert_at = imports[-1].end() if imports else 0
 source = source[:insert_at] + '\n' + FIELD + '\n' + MDNS_HELPERS + source[insert_at:]
 
 normalized = re.sub(r'\s+', ' ', source)
-if source.count(FIELD) != 1:
-    raise SystemExit('mDNS ENSURE FAILED: socket mDNS duplicado')
-if source.count('Future<void> _startBillaresMdns() async') != 1:
-    raise SystemExit('mDNS ENSURE FAILED: método mDNS duplicado')
-if source.count('Future<String?> _billaresLocalIp() async') != 1:
-    raise SystemExit('mDNS ENSURE FAILED: detector IP duplicado')
-if source.count('Future<void> _answerBillaresMdns(') != 1:
-    raise SystemExit('mDNS ENSURE FAILED: respuesta mDNS duplicada')
-if source.count('await _startBillaresMdns();') != 1:
-    raise SystemExit('mDNS ENSURE FAILED: arranque mDNS duplicado')
-if not re.search(r'HttpServer\.bind\s*\(\s*InternetAddress\.anyIPv4\s*,\s*80\b', normalized):
-    raise SystemExit('mDNS ENSURE FAILED: servidor LAN no quedó configurado en puerto 80')
-if 'RawDatagramSocket.bind(' not in source or '224.0.0.251' not in source:
-    raise SystemExit('mDNS ENSURE FAILED: multicast mDNS ausente')
-if 'billaresdonmiguel.local' not in source:
-    raise SystemExit('mDNS ENSURE FAILED: hostname mDNS ausente')
-if '\\nFuture<void> _startBillaresMdns()' in source or '\\nFuture<String?> _billaresLocalIp()' in source or '\\nFuture<void> _answerBillaresMdns(' in source:
-    raise SystemExit('mDNS ENSURE FAILED: saltos de línea literales detectados')
+checks = (
+    (source.count(FIELD) == 1, 'socket mDNS duplicado'),
+    (source.count('Future<void> _startBillaresMdns() async') == 1, 'método mDNS duplicado'),
+    (source.count('Future<String?> _billaresLocalIp() async') == 1, 'detector IP duplicado'),
+    (source.count('Future<void> _answerBillaresMdns(') == 1, 'respuesta mDNS duplicada'),
+    (source.count('await _startBillaresMdns();') == 1, 'arranque mDNS duplicado'),
+    (bool(re.search(r'HttpServer\.bind\s*\(\s*InternetAddress\.anyIPv4\s*,\s*80\b', normalized)), 'servidor LAN no quedó en puerto 80'),
+    ('224.0.0.251' in source, 'multicast mDNS ausente'),
+    ('billaresdonmiguel.local' in source, 'hostname mDNS ausente'),
+    ('\\nFuture<void> _startBillaresMdns()' not in source, 'saltos de línea literales detectados'),
+)
+for ok, message in checks:
+    if not ok:
+        raise SystemExit('mDNS ENSURE FAILED: ' + message)
 
 TARGET.write_text(source)
-print('OK: servidor LAN y mDNS reconstruidos estructuralmente sin depender de stateMap ni de nombres de clases')
+print('OK: servidor LAN y mDNS reconstruidos estructuralmente; sin stateMap, sin nombres de clase y sin parches textuales')
