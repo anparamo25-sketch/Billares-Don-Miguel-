@@ -81,6 +81,70 @@ def replace_class(source: str, class_name: str, replacement: str) -> str:
     return source[:a] + replacement + source[b:]
 
 
+def mask_strings_and_comments(source: str) -> str:
+    """Oculta literales y comentarios conservando posiciones para validar Dart real."""
+    out = list(source)
+    i = 0
+    n = len(source)
+    quote = None
+    triple = False
+    while i < n:
+        if quote:
+            token = quote * 3 if triple else quote
+            if source.startswith(token, i):
+                for j in range(i, min(i + len(token), n)):
+                    out[j] = ' '
+                i += len(token)
+                quote = None
+                triple = False
+                continue
+            out[i] = '\n' if source[i] == '\n' else ' '
+            if source[i] == '\\' and not triple and i + 1 < n:
+                out[i + 1] = '\n' if source[i + 1] == '\n' else ' '
+                i += 2
+            else:
+                i += 1
+            continue
+        if source.startswith('//', i):
+            out[i] = ' '
+            out[i + 1] = ' '
+            i += 2
+            while i < n and source[i] != '\n':
+                out[i] = ' '
+                i += 1
+            continue
+        if source.startswith('/*', i):
+            out[i] = ' '
+            out[i + 1] = ' '
+            i += 2
+            while i < n:
+                if source.startswith('*/', i):
+                    out[i] = ' '
+                    out[i + 1] = ' '
+                    i += 2
+                    break
+                out[i] = '\n' if source[i] == '\n' else ' '
+                i += 1
+            continue
+        if source.startswith("'''", i):
+            quote, triple = "'", True
+            out[i:i + 3] = [' ', ' ', ' ']
+            i += 3
+            continue
+        if source.startswith('"""', i):
+            quote, triple = '"', True
+            out[i:i + 3] = [' ', ' ', ' ']
+            i += 3
+            continue
+        if source[i] in ("'", '"'):
+            quote, triple = source[i], False
+            out[i] = ' '
+            i += 1
+            continue
+        i += 1
+    return ''.join(out)
+
+
 current = TARGET.read_text()
 baseline = subprocess.check_output(['git', 'show', f'{STABLE_COMMIT}:lib/main.dart'], text=True)
 current = replace_class(current, '_LoginPageState', extract_class(baseline, '_LoginPageState'))
@@ -110,7 +174,6 @@ for bad in ('checkingUpdate', 'showSettings', 'logout', 'dashboard()', 'historyP
         raise SystemExit(f'REPAIR PREFLIGHT FAILED: {bad} quedó dentro de _LoginPageState')
 if "appVersion = '1.2.5+125'" not in current:
     raise SystemExit('REPAIR PREFLIGHT FAILED: versión ausente')
-# No dependemos de un nombre de clase generado para validar el receptor TV.
 if not re.search(r'\bMap<String,\s*dynamic>\s+stateMap\s*\(\)', current):
     raise SystemExit('REPAIR PREFLIGHT FAILED: stateMap del Dashboard ausente')
 if not re.search(r'\bFuture\s*<\s*void\s*>\s+showTvConnection\s*\(', current):
@@ -145,16 +208,17 @@ if not binds or not any(arg.strip() == '80' for arg in binds):
 if 'billaresdonmiguel.local' not in normalized:
     raise SystemExit('REPAIR TV FAILED: hostname TV ausente')
 
-# Validación semántica: contar declaraciones reales, no cadenas de texto del propio
-# validador. Esto elimina la falsa duplicación que provocó el fallo del run #123.
+# Validación estructural: primero ocultamos strings y comentarios para que los
+# textos de mensajes, HTML y JavaScript jamás puedan contarse como código Dart.
+code_only = mask_strings_and_comments(current)
 show_tv_declarations = re.findall(
     r'\bFuture\s*<\s*void\s*>\s+showTvConnection\s*\(\s*\)\s+async\s*\{',
-    current,
+    code_only,
 )
 if len(show_tv_declarations) != 1:
-    raise SystemExit(f'REPAIR TV FAILED: showTvConnection quedó {len(show_tv_declarations)} declaraciones')
+    raise SystemExit(f'REPAIR TV FAILED: showTvConnection quedó {len(show_tv_declarations)} declaraciones reales')
 
-tv_getter_matches = list(re.finditer(r'(?m)^\s*String\s+get\s+tvHtml\s*=>\s*', current))
+tv_getter_matches = list(re.finditer(r'(?m)^\s*String\s+get\s+tvHtml\s*=>\s*', code_only))
 if len(tv_getter_matches) != 1:
     raise SystemExit(f'REPAIR TV FAILED: tvHtml quedó {len(tv_getter_matches)} veces')
 start = tv_getter_matches[0].start()
@@ -171,8 +235,10 @@ if '/api/state?ts=' not in tv_getter:
 if 'C&#36;' not in tv_getter:
     raise SystemExit('REPAIR TV FAILED: formato monetario TV ausente')
 
-for line in current.splitlines():
-    if '===' in line and 'String get tvHtml =>' not in line:
+# El JavaScript solo puede existir dentro del getter TV. Se inspecciona el código
+# ya sin strings/comentarios, por lo que === dentro del HTML nunca dispara este check.
+for line in code_only.splitlines():
+    if '===' in line:
         raise SystemExit('REPAIR TV FAILED: JavaScript quedó fuera del getter TV')
 if 'return r"""' in current or "return r'''" in current:
     raise SystemExit('REPAIR TV FAILED: triple comillas TV detectadas')
