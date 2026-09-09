@@ -6,6 +6,19 @@ import subprocess
 BASE_COMMIT = '21c20b4fdf72303398bb46c35dc109e1df373856'
 source = subprocess.check_output(['git', 'show', f'{BASE_COMMIT}:scripts/prepare_1_2_4.py'], text=True)
 source = source.replace('1.2.4+124', '1.2.6+126').replace('Billares-Don-Miguel/1.2.4', 'Billares-Don-Miguel/1.2.6')
+
+# El script histórico contiene un marcador de reemplazo demasiado estricto.
+# Normalizamos ese marcador antes de ejecutarlo para que funcione aunque el método
+# siguiente tenga formato Dart distinto, y luego hacemos el reemplazo real de forma
+# determinista sobre los nombres de métodos.
+source = source.replace(
+    "r\"  Future<void> startLanServer\\(\\) async \\{.*?\\n  Map<String, dynamic> stateMap\\(\\)\"",
+    "r\"  Future<void> startLanServer\\(\\) async \\{.*?(?=\\n  Map<String, dynamic> stateMap\\()\"",
+)
+source = source.replace(
+    "r\"  Future<void> showTvConnection\\(\\) async \\{.*?\\n  int buildNumber\\(String version\\)\"",
+    "r\"  Future<void> showTvConnection\\(\\) async \\{.*?(?=\\n  int buildNumber\\(String version\\))\"",
+)
 exec(compile(source, 'prepare_1_2_6_from_history.py', 'exec'), {'__name__': '__main__'})
 
 main = Path('lib/main.dart')
