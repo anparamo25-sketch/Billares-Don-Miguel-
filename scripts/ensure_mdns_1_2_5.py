@@ -2,52 +2,18 @@ from pathlib import Path
 import re
 
 TARGET = Path('lib/main.dart')
-FIELD = '  RawDatagramSocket? _billaresMdnsSocket;\n'
-HTTP_SERVER_METHOD = '''  Future<void> startLanServer() async {
-    try {
-      server = await HttpServer.bind(InternetAddress.anyIPv4, 80, shared: true);
-      final List<NetworkInterface> interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
-      final List<String> candidates = <String>[];
-      for (final NetworkInterface networkInterface in interfaces) {
-        final String name = networkInterface.name.toLowerCase();
-        for (final InternetAddress address in networkInterface.addresses) {
-          final String ip = address.address;
-          final List<int> parts = ip.split('.').map(int.parse).toList();
-          final bool privateIpv4 = parts.length == 4 && ((parts[0] == 10) || (parts[0] == 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] == 192 && parts[1] == 168));
-          if (!address.isLoopback && !address.isMulticast && !address.isLinkLocal && privateIpv4) {
-            final int priority = name.contains('wlan') || name.contains('wifi') ? 0 : name.contains('eth') ? 1 : 2;
-            candidates.add('$priority|$ip');
-          }
-        }
-      }
-      candidates.sort();
-      if (candidates.isNotEmpty) lanIp = candidates.first.split('|').last;
-      server!.listen(handleRequest, onError: (_) {});
-      if (mounted) setState(() {});
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo iniciar el servidor LAN')));
-      }
-    }
-  }
-'''
+FIELD = '  RawDatagramSocket? _billaresMdnsSocket;'
 METHODS = '''  Future<void> _startBillaresMdns() async {
     try {
       _billaresMdnsSocket?.close();
-      final RawDatagramSocket socket = await RawDatagramSocket.bind(
-        InternetAddress.anyIPv4,
-        5353,
-        reuseAddress: true,
-        reusePort: true,
-      );
+      final RawDatagramSocket socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 5353, reuseAddress: true, reusePort: true);
       _billaresMdnsSocket = socket;
       final InternetAddress multicast = InternetAddress('224.0.0.251');
       try { socket.joinMulticast(multicast); } catch (_) {}
       socket.listen((RawSocketEvent event) {
         if (event != RawSocketEvent.read) return;
         final Datagram? datagram = socket.receive();
-        if (datagram == null) return;
-        _answerBillaresMdns(socket, datagram);
+        if (datagram != null) _answerBillaresMdns(socket, datagram);
       });
     } catch (_) {}
   }
@@ -78,230 +44,144 @@ METHODS = '''  Future<void> _startBillaresMdns() async {
       if (ip.length != 4) return;
       final List<int> response = <int>[];
       response.addAll(q.sublist(0, 2));
-      response.addAll(<int>[0x84, 0x00, (qdCount >> 8) & 0xff, qdCount & 0xff, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]);
+      response.addAll(<int>[0x84, 0x00, (qdCount >> 8) & 255, qdCount & 255, 0, 1, 0, 0, 0, 0]);
       response.addAll(q.sublist(12, offset));
-      response.addAll(<int>[0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x78, 0x00, 0x04]);
+      response.addAll(<int>[0xC0, 0x0C, 0, 1, 0, 1, 0, 0, 0, 120, 0, 4]);
       response.addAll(ip);
       socket.send(response, datagram.address, datagram.port);
     } catch (_) {}
   }
 '''
 
-
-def matching_brace(source: str, open_pos: int) -> int:
-    depth = 0
-    quote = None
-    triple = False
-    i = open_pos
-    while i < len(source):
+def match_brace(s, pos):
+    depth = 0; quote = None; triple = False; i = pos
+    while i < len(s):
         if quote:
             token = quote * 3 if triple else quote
-            if source.startswith(token, i):
-                i += len(token); quote = None; triple = False; continue
-            if source[i] == '\\' and not triple:
-                i += 2; continue
+            if s.startswith(token, i): i += len(token); quote = None; triple = False; continue
+            if s[i] == '\\' and not triple: i += 2; continue
             i += 1; continue
-        if source.startswith("'''", i): quote, triple = "'", True; i += 3; continue
-        if source.startswith('"""', i): quote, triple = '"', True; i += 3; continue
-        if source[i] in ("'", '"'): quote, triple = source[i], False; i += 1; continue
-        if source.startswith('//', i):
-            end = source.find('\n', i + 2); i = len(source) if end < 0 else end + 1; continue
-        if source.startswith('/*', i):
-            end = source.find('*/', i + 2); i = len(source) if end < 0 else end + 2; continue
-        if source[i] == '{': depth += 1
-        elif source[i] == '}':
+        if s.startswith("'''", i): quote, triple = "'", True; i += 3; continue
+        if s.startswith('"""', i): quote, triple = '"', True; i += 3; continue
+        if s[i] in "'\"": quote, triple = s[i], False; i += 1; continue
+        if s.startswith('//', i):
+            e = s.find('\n', i + 2); i = len(s) if e < 0 else e + 1; continue
+        if s.startswith('/*', i):
+            e = s.find('*/', i + 2); i = len(s) if e < 0 else e + 2; continue
+        if s[i] == '{': depth += 1
+        elif s[i] == '}':
             depth -= 1
             if depth == 0: return i + 1
         i += 1
     raise SystemExit('mDNS ENSURE FAILED: llaves Dart sin cerrar')
 
-
-def matching_paren(source: str, open_pos: int) -> int:
-    depth = 0
-    quote = None
-    triple = False
-    i = open_pos
-    while i < len(source):
+def match_paren(s, pos):
+    depth = 0; quote = None; triple = False; i = pos
+    while i < len(s):
         if quote:
             token = quote * 3 if triple else quote
-            if source.startswith(token, i):
-                i += len(token); quote = None; triple = False; continue
-            if source[i] == '\\' and not triple:
-                i += 2; continue
+            if s.startswith(token, i): i += len(token); quote = None; triple = False; continue
+            if s[i] == '\\' and not triple: i += 2; continue
             i += 1; continue
-        if source.startswith("'''", i): quote, triple = "'", True; i += 3; continue
-        if source.startswith('"""', i): quote, triple = '"', True; i += 3; continue
-        if source[i] in ("'", '"'): quote, triple = source[i], False; i += 1; continue
-        if source.startswith('//', i):
-            end = source.find('\n', i + 2); i = len(source) if end < 0 else end + 1; continue
-        if source.startswith('/*', i):
-            end = source.find('*/', i + 2); i = len(source) if end < 0 else end + 2; continue
-        if source[i] == '(': depth += 1
-        elif source[i] == ')':
+        if s.startswith("'''", i): quote, triple = "'", True; i += 3; continue
+        if s.startswith('"""', i): quote, triple = '"', True; i += 3; continue
+        if s[i] in "'\"": quote, triple = s[i], False; i += 1; continue
+        if s.startswith('//', i):
+            e = s.find('\n', i + 2); i = len(s) if e < 0 else e + 1; continue
+        if s.startswith('/*', i):
+            e = s.find('*/', i + 2); i = len(s) if e < 0 else e + 2; continue
+        if s[i] == '(': depth += 1
+        elif s[i] == ')':
             depth -= 1
             if depth == 0: return i
         i += 1
     raise SystemExit('mDNS ENSURE FAILED: paréntesis Dart sin cerrar')
 
-
-def class_spans(source: str):
-    spans = []
-    for m in re.finditer(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*\b[^\{]*\{', source):
-        brace = source.find('{', m.start(), m.end())
-        try:
-            end = matching_brace(source, brace)
-        except SystemExit:
-            continue
-        spans.append((m.start(), end, source[m.start():end]))
-    return spans
-
-
-def remove_method(source: str, pattern: re.Pattern) -> str:
-    while True:
-        m = pattern.search(source)
-        if not m:
-            return source
-        brace = source.find('{', m.start(), m.end())
-        if brace < 0:
-            return source
-        end = matching_brace(source, brace)
-        source = source[:m.start()] + source[end:]
-
-
-def owner_class(source: str, marker_pos: int):
-    for a, b, text in class_spans(source):
-        if a <= marker_pos < b:
-            return a, b, text
+def owner_class(s, marker):
+    for m in reversed(list(re.finditer(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*\b', s[:marker + 1]))):
+        brace = s.find('{', m.end(), marker + 1)
+        if brace < 0: continue
+        try: end = match_brace(s, brace)
+        except SystemExit: continue
+        if marker < end: return m.start(), end
     return None
 
+def remove_method(s, name):
+    pat = re.compile(r'(?m)^\s*(?:Future<void>|void)\s+' + re.escape(name) + r'\s*\([^\n]*\)\s*(?:async\s*)?\{')
+    while True:
+        m = pat.search(s)
+        if not m: return s
+        end = match_brace(s, s.find('{', m.start(), m.end()))
+        s = s[:m.start()] + s[end:]
 
-def insert_in_class(source: str, class_start: int, class_end: int, text: str) -> str:
-    brace = source.find('{', class_start, class_end)
-    if brace < 0:
-        raise SystemExit('mDNS ENSURE FAILED: llave de clase no encontrada')
-    return source[:brace + 1] + '\n' + text + source[brace + 1:]
-
+def ensure_http_server(s):
+    bind = re.search(r'\bHttpServer\s*\.\s*bind\s*\(', s)
+    if bind:
+        op = s.find('(', bind.start()); cp = match_paren(s, op)
+        args = s[op + 1:cp]
+        if re.search(r'InternetAddress\.anyIPv4\s*,\s*80\b', args): return s
+        if re.search(r'InternetAddress\.anyIPv4\s*,\s*\d+', args):
+            args = re.sub(r'(InternetAddress\.anyIPv4\s*,\s*)\d+', r'\g<1>80', args, count=1)
+        else: args = 'InternetAddress.anyIPv4, 80, shared: true'
+        return s[:op + 1] + args + s[cp:]
+    marker = re.search(r'\bString\s+get\s+tvHtml\s*=>|\bMap<String,\s*dynamic>\s+stateMap\s*\(\)|\bFuture<void>\s+showTvConnection\s*\(', s)
+    if not marker: raise SystemExit('mDNS ENSURE FAILED: no se encontró receptor TV real')
+    own = owner_class(s, marker.start())
+    if not own: raise SystemExit('mDNS ENSURE FAILED: no se encontró la clase real del receptor TV')
+    a, b = own
+    server = '''  Future<void> startLanServer() async {
+    try {
+      server = await HttpServer.bind(InternetAddress.anyIPv4, 80, shared: true);
+      server!.listen(handleRequest, onError: (_) {});
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
+'''
+    inside = s[a:b]
+    state = re.search(r'\bMap<String,\s*dynamic>\s+stateMap\s*\(\)', inside)
+    pos = a + state.start() if state else s.find('{', a, b) + 1
+    return s[:pos] + server + '\n' + s[pos:]
 
 s = TARGET.read_text()
-
-# Rebuild the generated HTTP server structure if the previous generator left
-# no literal HttpServer.bind. This is structural reconstruction, not a textual
-# patch: the receiver always owns one canonical startLanServer implementation.
-bind_match = re.search(r'\bHttpServer\.bind\s*\(', s)
-if not bind_match:
-    candidate = None
-    for pattern in (
-        r'\bFuture<void>\s+startLanServer\s*\(\)\s+async\s*\{',
-        r'\bFuture<void>\s+handleRequest\s*\(HttpRequest\s+request\)',
-        r'\bMap<String,\s*dynamic>\s+stateMap\s*\(\)',
-        r'\bString\s+get\s+tvHtml\s*=>',
-    ):
-        m = re.search(pattern, s)
-        if m:
-            candidate = m
-            break
-    if candidate is None:
-        raise SystemExit('mDNS ENSURE FAILED: no se encontró la clase real del receptor TV')
-    owner = owner_class(s, candidate.start())
-    if owner is None:
-        raise SystemExit('mDNS ENSURE FAILED: no se encontró la clase real del receptor TV')
-    class_start, class_end, owner_text = owner
-    start_match = re.search(r'\bFuture<void>\s+startLanServer\s*\(\)\s+async\s*\{', owner_text)
-    if start_match:
-        local_open = owner_text.find('{', start_match.start(), start_match.end())
-        local_end = matching_brace(owner_text, local_open)
-        abs_start = class_start + start_match.start()
-        abs_end = class_start + local_end
-        s = s[:abs_start] + HTTP_SERVER_METHOD.rstrip() + s[abs_end:]
-    else:
-        # The real class exists but the server lifecycle method was removed.
-        # Insert the canonical method before stateMap, keeping the existing
-        # handleRequest and state model intact.
-        marker = re.search(r'\bMap<String,\s*dynamic>\s+stateMap\s*\(\)', owner_text)
-        if marker:
-            abs_marker = class_start + marker.start()
-            s = s[:abs_marker] + HTTP_SERVER_METHOD + '\n' + s[abs_marker:]
-        else:
-            s = insert_in_class(s, class_start, class_end, HTTP_SERVER_METHOD)
-
-# Remove previous mDNS definitions safely and rebuild exactly one copy in the
-# class that now contains the real HttpServer.bind.
-s = remove_method(s, re.compile(r'(?m)^\s*Future<void>\s+_startBillaresMdns\s*\(\)\s+async\s*\{'))
-s = remove_method(s, re.compile(r'(?m)^\s*void\s+_answerBillaresMdns\s*\(RawDatagramSocket\s+socket,\s*Datagram\s+datagram\)\s*\{'))
+s = remove_method(s, '_startBillaresMdns')
+s = remove_method(s, '_answerBillaresMdns')
 s = re.sub(r'(?m)^\s*RawDatagramSocket\?\s+_billaresMdnsSocket;\s*\n?', '', s)
 s = re.sub(r'(?m)^\s*await\s+_startBillaresMdns\(\);\s*\n?', '', s)
+s = ensure_http_server(s)
 
-bind_match = re.search(r'\bHttpServer\.bind\s*\(', s)
-if not bind_match:
-    raise SystemExit('mDNS ENSURE FAILED: no se pudo reconstruir HttpServer.bind')
+bind = re.search(r'\bHttpServer\s*\.\s*bind\s*\(', s)
+if not bind: raise SystemExit('mDNS ENSURE FAILED: no se pudo construir HttpServer.bind')
+open_pos = s.find('(', bind.start()); close_pos = match_paren(s, open_pos)
+args = s[open_pos + 1:close_pos]
+if not re.search(r'InternetAddress\.anyIPv4\s*,\s*80\b', args):
+    args = re.sub(r'(InternetAddress\.anyIPv4\s*,\s*)\d+', r'\g<1>80', args, count=1) if re.search(r'InternetAddress\.anyIPv4\s*,\s*\d+', args) else 'InternetAddress.anyIPv4, 80, shared: true'
+    s = s[:open_pos + 1] + args + s[close_pos:]
 
-owner = owner_class(s, bind_match.start())
-if owner is None:
-    raise SystemExit('mDNS ENSURE FAILED: clase del servidor HTTP no encontrada')
-class_start, class_end, owner_text = owner
+bind = re.search(r'\bHttpServer\s*\.\s*bind\s*\(', s)
+own = owner_class(s, bind.start())
+if not own: raise SystemExit('mDNS ENSURE FAILED: clase del servidor HTTP no encontrada')
+a, b = own
+brace = s.find('{', a, b)
+s = s[:brace + 1] + '\n' + FIELD + s[brace + 1:]
 
-# Ensure the real HTTP bind uses port 80 without depending on formatting.
-open_paren = s.find('(', bind_match.start())
-close_paren = matching_paren(s, open_paren)
-bind_args = s[open_paren + 1:close_paren]
-if not re.search(r'InternetAddress\.anyIPv4\s*,\s*80\b', bind_args):
-    if re.search(r'InternetAddress\.anyIPv4\s*,\s*\d+', bind_args):
-        new_args = re.sub(r'(InternetAddress\.anyIPv4\s*,\s*)\d+', r'\g<1>80', bind_args, count=1)
-    else:
-        new_args = 'InternetAddress.anyIPv4, 80, shared: true'
-    s = s[:open_paren + 1] + new_args + s[close_paren:]
-    bind_match = re.search(r'\bHttpServer\.bind\s*\(', s)
-    owner = owner_class(s, bind_match.start())
-    class_start, class_end, owner_text = owner
+bind = re.search(r'\bHttpServer\s*\.\s*bind\s*\(', s)
+own = owner_class(s, bind.start())
+a, b = own
+s = s[:b - 1] + '\n' + METHODS + s[b - 1:]
 
-# Add the mDNS field and methods to the actual server class.
-s = insert_in_class(s, class_start, class_end, FIELD.rstrip())
-bind_match = re.search(r'\bHttpServer\.bind\s*\(', s)
-owner = owner_class(s, bind_match.start())
-class_start, class_end, owner_text = owner
-absolute = class_end - 1
-s = s[:absolute] + '\n' + METHODS + s[absolute:]
+bind = re.search(r'\bHttpServer\s*\.\s*bind\s*\(', s)
+open_pos = s.find('(', bind.start()); close_pos = match_paren(s, open_pos)
+semi = s.find(';', close_pos)
+if semi < 0: raise SystemExit('mDNS ENSURE FAILED: final de HttpServer.bind no encontrado')
+s = s[:semi + 1] + '\n      await _startBillaresMdns();' + s[semi + 1:]
 
-# Start mDNS immediately after the complete HttpServer.bind(...) statement.
-bind_match = re.search(r'\bHttpServer\.bind\s*\(', s)
-open_paren = s.find('(', bind_match.start())
-close_paren = matching_paren(s, open_paren)
-semicolon = s.find(';', close_paren)
-if semicolon < 0:
-    raise SystemExit('mDNS ENSURE FAILED: final de HttpServer.bind no encontrado')
-s = s[:semicolon + 1] + '\n      await _startBillaresMdns();' + s[semicolon + 1:]
-
-# Final semantic validation.
-bind_match = re.search(r'\bHttpServer\.bind\s*\(', s)
-if not bind_match:
-    raise SystemExit('mDNS ENSURE FAILED: HttpServer.bind ausente al validar')
-owner = owner_class(s, bind_match.start())
-if owner is None:
-    raise SystemExit('mDNS ENSURE FAILED: clase del servidor ausente al validar')
-owner_text = owner[2]
-for marker in (
-    FIELD.strip(),
-    'Future<void> _startBillaresMdns() async',
-    'void _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram)',
-    'await _startBillaresMdns();',
-    'RawDatagramSocket.bind',
-    '5353',
-    '224.0.0.251',
-):
-    if marker not in owner_text:
-        raise SystemExit('mDNS ENSURE FAILED: componente ausente: ' + marker)
-if not re.search(r'HttpServer\.bind\s*\(\s*InternetAddress\.anyIPv4\s*,\s*80\b', s):
-    raise SystemExit('mDNS ENSURE FAILED: servidor HTTP no está en puerto 80')
-if 'billaresdonmiguel.local' not in s:
-    raise SystemExit('mDNS ENSURE FAILED: hostname ausente')
-if owner_text.count(FIELD.strip()) != 1:
-    raise SystemExit('mDNS ENSURE FAILED: socket mDNS duplicado')
-if owner_text.count('Future<void> _startBillaresMdns() async') != 1:
-    raise SystemExit('mDNS ENSURE FAILED: método mDNS duplicado')
-if owner_text.count('void _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram)') != 1:
-    raise SystemExit('mDNS ENSURE FAILED: respuesta mDNS duplicada')
-if owner_text.count('await _startBillaresMdns();') != 1:
-    raise SystemExit('mDNS ENSURE FAILED: arranque mDNS duplicado')
+if not re.search(r'\bHttpServer\s*\.\s*bind\s*\(\s*InternetAddress\.anyIPv4\s*,\s*80\b', s): raise SystemExit('mDNS ENSURE FAILED: servidor HTTP no está en puerto 80')
+if s.count(FIELD) != 1: raise SystemExit('mDNS ENSURE FAILED: socket mDNS duplicado')
+if s.count('Future<void> _startBillaresMdns() async') != 1: raise SystemExit('mDNS ENSURE FAILED: método mDNS duplicado')
+if s.count('void _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram)') != 1: raise SystemExit('mDNS ENSURE FAILED: respuesta mDNS duplicada')
+if 'await _startBillaresMdns();' not in s: raise SystemExit('mDNS ENSURE FAILED: arranque mDNS ausente')
+if '5353' not in s or '224.0.0.251' not in s: raise SystemExit('mDNS ENSURE FAILED: configuración multicast ausente')
+if 'billaresdonmiguel.local' not in s: raise SystemExit('mDNS ENSURE FAILED: hostname ausente')
 
 TARGET.write_text(s)
-print('OK: servidor HTTP y mDNS reconstruidos estructuralmente sobre la clase real del receptor TV')
+print('OK: servidor HTTP y mDNS reconstruidos sobre la estructura real del receptor TV')
