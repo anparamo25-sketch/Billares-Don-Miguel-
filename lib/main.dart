@@ -16,21 +16,6 @@ const Map<int, double> tableRates = <int, double>{1: 120, 2: 120, 3: 100, 4: 100
 
 enum TableStatus { available, playing, pending }
 
-Future<String?> _billaresLocalIp() async {
-  try {
-    final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
-    for (final network in interfaces) {
-      for (final address in network.addresses) {
-        final parts = address.address.split('.').map(int.tryParse).whereType<int>().toList();
-        final privateIpv4 = parts.length == 4 && (parts[0] == 10 || (parts[0] == 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] == 192 && parts[1] == 168));
-        if (privateIpv4 && !address.isLoopback && !address.isLinkLocal && !address.isMulticast) return address.address;
-      }
-    }
-  } catch (_) {}
-  return null;
-}
-
-
 RawDatagramSocket? _billaresMdnsSocket;
 Future<String?> _billaresLocalIp() async {
   try {
@@ -72,9 +57,6 @@ Future<void> _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram) as
     final List<int> octets = ip.split('.').map(int.parse).toList();
     if (octets.length != 4) return;
 
-    // Valid DNS/mDNS header: flags=0x8400, QDCOUNT=0, ANCOUNT=1,
-    // NSCOUNT=0, ARCOUNT=0. The old implementation put TTL/RDLENGTH
-    // into the header and produced an invalid DNS packet.
     final response = <int>[];
     response.addAll(query.sublist(0, 2));
     response.addAll(<int>[0x84, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
@@ -932,99 +914,47 @@ Map<String, dynamic> stateMap() => <String, dynamic>{
   }
 
   @override
-    
-
-  @override
-  
-
-
-
-  Widget _summaryCard(String label, String value, Color color, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: .12),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withValues(alpha: .45)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Icon(icon, color: color),
-          const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(label, style: const TextStyle(fontSize: 12)),
-              Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(
+          title: const Text('Billares Don Miguel', style: TextStyle(fontWeight: FontWeight.bold)),
+          actions: <Widget>[
+            if (checkingUpdate) const Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))),
+            IconButton(tooltip: 'Configuración', onPressed: showSettings, icon: const Icon(Icons.settings_outlined)),
+            IconButton(tooltip: 'Cerrar sesión', onPressed: logout, icon: const Icon(Icons.logout)),
+          ],
+        ),
+        body: tab == 0 ? dashboard() : historyPage(),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: tab,
+          onDestinationSelected: (int index) => setState(() => tab = index),
+          destinations: const <NavigationDestination>[
+            NavigationDestination(icon: Icon(Icons.table_restaurant), label: 'Mesas'),
+            NavigationDestination(icon: Icon(Icons.history), label: 'Historial'),
+          ],
+        ),
+      );
+  Widget workdayView() {
+    final String opened = workdayOpenedAt == null ? '—' : workdayOpenedAt!.toString().replaceFirst('T', ' ').split('.').first;
+    final String closed = workdayClosedAt == null ? '—' : workdayClosedAt!.toString().replaceFirst('T', ' ').split('.').first;
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        final int columns = constraints.maxWidth >= 1200 ? 3 : constraints.maxWidth >= 650 ? 2 : 1;
-        final int available = tableList.where((BillTable t) => t.status == TableStatus.available).length;
-        final int playing = tableList.where((BillTable t) => t.status == TableStatus.playing).length;
-        final int pending = tableList.where((BillTable t) => t.status == TableStatus.pending).length;
-        final Widget home = Padding(
-          padding: EdgeInsets.all(constraints.maxWidth >= 800 ? 22 : 14),
+        final int columns = constraints.maxWidth >= 900 ? 4 : constraints.maxWidth >= 600 ? 2 : 1;
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text('Panel de administración', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
-                        const SizedBox(height: 4),
-                        Text(workdayActive ? 'Jornada abierta • ${clock(workdayOpenedAt ?? DateTime.now())}' : 'Jornada cerrada'),
-                      ],
-                    ),
-                  ),
-                  Flexible(
-                    child: Chip(
-                      avatar: Icon(Icons.wifi, size: 18, color: lanIp != null ? Colors.green : Colors.red),
-                      label: Text(lanIp != null ? 'LAN conectado' : 'LAN no disponible', overflow: TextOverflow.ellipsis),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: <Widget>[
-                  _summaryCard('Disponibles', '$available', Colors.green, Icons.check_circle_outline),
-                  _summaryCard('En juego', '$playing', Colors.red, Icons.sports_esports_outlined),
-                  _summaryCard('Pendientes', '$pending', Colors.amber, Icons.payments_outlined),
-                  _summaryCard('Generado hoy', money(todayTotal), Colors.blue, Icons.attach_money),
-                ],
-              ),
-              const SizedBox(height: 14),
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    crossAxisAlignment: WrapCrossAlignment.center,
+                  padding: const EdgeInsets.all(18),
+                  child: Row(
                     children: <Widget>[
-                      Chip(
-                        avatar: Icon(Icons.circle, size: 12, color: workdayActive ? Colors.green : Colors.grey),
-                        label: Text(workdayActive ? 'Jornada abierta' : 'Jornada cerrada'),
-                      ),
-                      if (workdayActive) Text('Apertura: ${clock(workdayOpenedAt!)}'),
-                      if (workdayActive) Text('Juegos: $workdayGames'),
-                      if (workdayActive) Text('Generado: ${money(workdayGenerated)}'),
-                      if (!workdayActive && workdayClosedAt != null) Text('Cierre: ${clock(workdayClosedAt!)}'),
-                      if (!workdayActive && workdayClosedAt != null) Text('Efectivo físico: ${money(workdayCashClose)}'),
+                      Icon(workdayActive ? Icons.lock_open : Icons.lock_outline, color: workdayActive ? Colors.green : Colors.orange, size: 30),
+                      const SizedBox(width: 12),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+                        const Text('Jornada de trabajo', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
+                        Text(workdayActive ? 'ABIERTA' : 'CERRADA', style: TextStyle(color: workdayActive ? Colors.green : Colors.orange, fontWeight: FontWeight.bold)),
+                      ])),
                       FilledButton.icon(
                         onPressed: workdayActive ? closeWorkday : openWorkday,
                         icon: Icon(workdayActive ? Icons.lock : Icons.lock_open),
@@ -1035,52 +965,35 @@ Widget build(BuildContext context) {
                 ),
               ),
               const SizedBox(height: 12),
-              Row(
+              GridView.count(
+                crossAxisCount: columns,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: constraints.maxWidth >= 600 ? 2.3 : 2.8,
                 children: <Widget>[
-                  Expanded(child: Text('Mesas', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900))),
-                  const Text('🟢 Libre   🔴 En juego   🟡 Pendiente'),
+                  _summaryCard('Juegos', '$workdayGames', Icons.sports_bar),
+                  _summaryCard('Generado hoy', 'C$ ${workdayGenerated.toStringAsFixed(2)}', Icons.payments),
+                  _summaryCard('Efectivo físico', 'C$ ${workdayCashClose.toStringAsFixed(2)}', Icons.account_balance_wallet),
+                  _summaryCard('Apertura', opened, Icons.schedule),
                 ],
               ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: GridView.builder(
-                  padding: EdgeInsets.zero,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: columns,
-                    mainAxisExtent: columns == 1 ? 390 : 350,
-                    crossAxisSpacing: 14,
-                    mainAxisSpacing: 14,
-                  ),
-                  itemCount: tableList.length,
-                  itemBuilder: (_, int index) => tableCard(tableList[index]),
-                ),
-              ),
-            ],
-          ),
-        );
-
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('Billares Don Miguel', style: TextStyle(fontWeight: FontWeight.bold)),
-            actions: <Widget>[
-              IconButton(tooltip: 'Pantalla exclusiva para TV', onPressed: showTvConnection, icon: const Icon(Icons.tv)),
-              if (checkingUpdate) const Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))),
-              IconButton(tooltip: 'Buscar actualización', onPressed: checkingUpdate ? null : () => checkForUpdate(showNoUpdate: true), icon: const Icon(Icons.system_update_alt)),
-              IconButton(tooltip: 'Configuración', onPressed: showSettings, icon: const Icon(Icons.settings_outlined)),
-              IconButton(tooltip: 'Cerrar sesión', onPressed: logout, icon: const Icon(Icons.logout)),
-            ],
-          ),
-          body: tab == 0 ? home : tab == 1 ? workdayView() : historyPage(),
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: tab,
-            onDestinationSelected: (int index) => setState(() => tab = index),
-            destinations: const <NavigationDestination>[
-              NavigationDestination(icon: Icon(Icons.table_restaurant), selectedIcon: Icon(Icons.dashboard), label: 'Mesas'),
-              NavigationDestination(icon: Icon(Icons.calendar_today), selectedIcon: Icon(Icons.calendar_today), label: 'Jornada'),
-              NavigationDestination(icon: Icon(Icons.history), selectedIcon: Icon(Icons.history), label: 'Historial'),
+              const SizedBox(height: 16),
+              Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+                const Text('Detalle de jornada', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 10),
+                Text('Inicio: $opened'),
+                Text('Cierre: $closed'),
+                Text('Partidas registradas: $workdayGames'),
+                Text('Total generado: C$ ${workdayGenerated.toStringAsFixed(2)}'),
+                Text('Efectivo físico al cierre: C$ ${workdayCashClose.toStringAsFixed(2)}'),
+              ]))),
             ],
           ),
         );
       },
     );
-  }}
+  }
+
+}
