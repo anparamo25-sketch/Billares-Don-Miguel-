@@ -109,12 +109,17 @@ jobs:
           grep -q 'de.julianassmann.flutter_background.IsolateHolderService' android/app/src/main/AndroidManifest.xml
       - name: Verificar versión 1.2.5 y TV exclusiva
         run: |
+          set -euo pipefail
           grep -q "appVersion = '1.2.5+125'" lib/main.dart
           grep -q 'github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json' lib/main.dart
-          grep -q "client.userAgent = 'Billares-Don-Miguel/1.2.5'" lib/main.dart
-          grep -q "com.billaresdonmiguel/tv_cast" lib/main.dart
-          grep -q "ACTION_CAST_SETTINGS" android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
-          grep -q "Pantalla exclusiva para TV" lib/main.dart
+          grep -q 'String get tvHtml =>' lib/main.dart
+          grep -q 'Billares Don Miguel' lib/main.dart
+          grep -q 'billaresdonmiguel.local/tv' lib/main.dart
+          grep -q '/api/state?ts=' lib/main.dart
+          grep -q 'InternetAddress.anyIPv4, 80' lib/main.dart
+          grep -q 'RawDatagramSocket' lib/main.dart
+          grep -q '224.0.0.251' lib/main.dart
+          grep -q '5353' lib/main.dart
       - name: Compilar APK release
         run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
       - name: Verificar APK generado
