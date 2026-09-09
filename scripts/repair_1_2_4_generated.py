@@ -45,6 +45,12 @@ subprocess.check_call(['python3','scripts/rebuild_tv_1_2_5.py'])
 subprocess.check_call(['python3','scripts/repair_tv_hostname_1_2_5.py'])
 subprocess.check_call(['python3','scripts/ensure_mdns_1_2_5.py'])
 subprocess.check_call(['python3','scripts/repair_tv_final_safety.py'])
+# La versión TV/LAN actual ya no utiliza url_launcher. La eliminación se hace
+# aquí, después de la reconstrucción canónica, para que el productor no dependa
+# de imports heredados de versiones anteriores.
+source=TARGET.read_text()
+source=source.replace("import 'package:url_launcher/url_launcher.dart';\n", '')
+TARGET.write_text(source)
 source=TARGET.read_text();normalized=re.sub(r'\s+',' ',source)
 checks=((len(re.findall(r'\bFuture\s*<\s*void\s*>\s+startLanServer\s*\(\s*\)\s+async\s*\{',source))==1,'servidor LAN'),(len(re.findall(r'\bFuture\s*<\s*void\s*>\s+showTvConnection\s*\(\s*\)\s+async\s*\{',source))==1,'conexión TV'),(len(re.findall(r'(?m)^\s*String\s+get\s+tvHtml\s*=>',source))==1,'receptor TV'),('HttpServer.bind(InternetAddress.anyIPv4, 80' in normalized,'puerto LAN 80'),('http://billaresdonmiguel.local/tv' in source,'hostname TV'),('/api/state?ts=' in source,'actualización TV'),('Billares Don Miguel' in source,'título TV'),(source.count('await _startBillaresMdns();')==1,'arranque mDNS'),(source.count('RawDatagramSocket? _billaresMdnsSocket;')==1,'socket mDNS'))
 for ok,name in checks:
