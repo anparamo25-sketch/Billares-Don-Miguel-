@@ -1,12 +1,15 @@
 name: Billares Don Miguel - Build APK
 
 # Compilación de distribución 1.2.5+125.
+# Ejecución forzada después de la limpieza determinista del receptor TV.
 on:
   push:
     branches: [main]
     paths-ignore:
       - update.json
   workflow_dispatch:
+
+authorization_placeholder: null
 
 permissions:
   contents: write
