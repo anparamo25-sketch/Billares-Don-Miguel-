@@ -1,8 +1,7 @@
 name: Billares Don Miguel - Build APK
 
-# Compilación de distribución 1.2.5+125.
-# Ejecución forzada después de la limpieza determinista del receptor TV.
-# Trigger de compilación: corrección mDNS 1.2.5.
+# Compilación limpia de distribución 1.2.5+125.
+# La reconstrucción TV/LAN/mDNS se realiza una sola vez por el productor canónico.
 on:
   push:
     branches: [main]
@@ -59,26 +58,13 @@ jobs:
             rm -rf "$SDK_ROOT/ndk/${NDK_VERSION}" "$SDK_ROOT/.temp" || true
             sleep 3
           done
-          if [ "$installed" -ne 1 ]; then
-            echo "ERROR: No se pudo instalar NDK ${NDK_VERSION} después de 3 intentos."; exit 1
-          fi
+          if [ "$installed" -ne 1 ]; then echo "ERROR: No se pudo instalar NDK ${NDK_VERSION} después de 3 intentos."; exit 1; fi
       - name: Generar plataforma Android limpia
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
       - name: Preparar versión 1.2.5
         run: python3 scripts/prepare_1_2_4.py
-      - name: Reparar y validar fuente generada 1.2.5
+      - name: Reconstruir y validar fuente 1.2.5
         run: python3 scripts/repair_1_2_4_generated.py
-      - name: Sanitizar código Dart generado
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('lib/main.dart')
-          s = p.read_text()
-          s = s.replace(r'C$', r'C\$')
-          p.write_text(s)
-          PY
       - name: Configurar Android para LAN, actualizaciones, segundo plano y compatibilidad
         run: |
           python3 - <<'PY'
