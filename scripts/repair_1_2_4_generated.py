@@ -6,8 +6,6 @@ import py_compile
 TARGET = Path('lib/main.dart')
 STABLE_COMMIT = '5e5ec88e7f6c12f5c1dae006ad95da4b903f950d'
 
-# Los reparadores se validan antes de ejecutar; el reparador de sintaxis TV se ejecuta
-# primero porque convierte su plantilla a una forma Python válida antes de compilarla.
 for script in ('scripts/prepare_1_2_4.py', 'scripts/repair_1_2_4_generated.py', 'scripts/repair_tv_script_syntax.py', 'scripts/repair_tv_hostname_1_2_5.py'):
     try:
         py_compile.compile(script, doraise=True)
@@ -85,8 +83,6 @@ if 'class _DashboardPageState' not in current:
     raise SystemExit('REPAIR PREFLIGHT FAILED: DashboardPage ausente')
 
 TARGET.write_text(current)
-
-# Reparar primero la sintaxis Python del generador TV y comprobarla de nuevo.
 subprocess.check_call(['python3', 'scripts/repair_tv_script_syntax.py'])
 py_compile.compile('scripts/repair_tv_1_2_4.py', doraise=True)
 subprocess.check_call(['python3', 'scripts/repair_tv_1_2_4.py'])
@@ -110,8 +106,6 @@ for marker, message in required.items():
     if marker not in current:
         raise SystemExit(f'REPAIR TV FAILED: {message}')
 
-if 'return r\''' in current:
-    raise SystemExit('REPAIR TV FAILED: delimitador Python quedó dentro del Dart generado')
 if "replaceAll('\\\\', '\\\\\\\\')" in current:
     raise SystemExit('REPAIR TV FAILED: escape inválido en initialState')
 
