@@ -11,35 +11,19 @@ show_tv = r'''  Future<void> showTvConnection() async {
     }
     final String url = 'http://$lanIp:8080/tv';
     if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        title: const Text('Receptor exclusivo para TV'),
-        content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-            const Text('Esta opción NO duplica la pantalla del celular. La TV debe abrir el receptor web y mostrará únicamente las mesas.'),
-            const SizedBox(height: 14),
-            const Text('Dirección del receptor:', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            SelectableText(url, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            FilledButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: url)); if (dialogContext.mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Dirección copiada'))); }, icon: const Icon(Icons.copy), label: const Text('Copiar dirección')),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(onPressed: () async { try { final bool opened = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication); if (!opened && dialogContext.mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('No se pudo abrir el receptor web'))); } catch (_) { if (dialogContext.mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('No se pudo abrir el receptor web'))); } }, icon: const Icon(Icons.open_in_browser), label: const Text('Probar receptor web')),
-            const SizedBox(height: 10),
-            const Text('En la TV: abre su navegador y escribe exactamente la dirección anterior. El celular puede seguir usando CENTRAL normalmente.', style: TextStyle(fontSize: 12)),
-            const SizedBox(height: 8),
-            const Text('Importante: “Duplicar pantalla” de Android/Miracast muestra toda la pantalla. No se utiliza para este receptor.', style: TextStyle(fontSize: 12)),
-          ]),
-        ),
-        actions: <Widget>[TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cerrar'))],
-      ),
-    );
+    await showDialog<void>(context: context, builder: (BuildContext dialogContext) => AlertDialog(title: const Text('Receptor exclusivo para TV'), content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+      const Text('La TV debe abrir el receptor web. Mostrará únicamente las mesas y sus estados; el celular puede seguir usando CENTRAL.'),
+      const SizedBox(height: 14), const Text('Dirección del receptor:', style: TextStyle(fontWeight: FontWeight.bold)), const SizedBox(height: 6),
+      SelectableText(url, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 10),
+      FilledButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: url)); if (dialogContext.mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Dirección copiada'))); }, icon: const Icon(Icons.copy), label: const Text('Copiar dirección')),
+      const SizedBox(height: 8),
+      OutlinedButton.icon(onPressed: () async { try { final bool opened = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication); if (!opened && dialogContext.mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('No se pudo abrir el receptor web'))); } catch (_) { if (dialogContext.mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('No se pudo abrir el receptor web'))); } }, icon: const Icon(Icons.open_in_browser), label: const Text('Probar receptor web')),
+      const SizedBox(height: 10), const Text('En la TV: abre su navegador y escribe la dirección anterior. No uses “Duplicar pantalla”, porque Android/Miracast duplica toda la pantalla.', style: TextStyle(fontSize: 12)),
+    ])), actions: <Widget>[TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cerrar'))]));
   }
 '''
 s2 = re.sub(r"  Future<void> showTvConnection\(\) async \{.*?\n  int buildNumber\(String version\)", show_tv + "\n  int buildNumber(String version)", s, count=1, flags=re.S)
-if s2 == s:
-    raise SystemExit('No se encontró showTvConnection')
+if s2 == s: raise SystemExit('No se encontró showTvConnection')
 s = s2
 
 server = r'''  Future<void> startLanServer() async {
@@ -63,41 +47,29 @@ server = r'''  Future<void> startLanServer() async {
       if (candidates.isNotEmpty) lanIp = candidates.first.split('|').last;
       server!.listen(handleRequest, onError: (_) {});
       if (mounted) setState(() {});
-    } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo iniciar el receptor LAN en el puerto 8080')));
-    }
+    } catch (_) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo iniciar el receptor LAN en el puerto 8080'))); }
   }
 
   Future<void> handleRequest(HttpRequest request) async {
     final HttpResponse response = request.response;
-    response.headers.set('Access-Control-Allow-Origin', '*');
-    response.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    response.headers.set('Access-Control-Allow-Headers', '*');
-    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Access-Control-Allow-Origin', '*'); response.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS'); response.headers.set('Access-Control-Allow-Headers', '*');
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0'); response.headers.set('Pragma', 'no-cache');
     if (request.method == 'OPTIONS') { response.statusCode = HttpStatus.noContent; await response.close(); return; }
-    if (request.uri.path == '/health') {
-      final String body = jsonEncode(<String, dynamic>{'ok': true, 'app': 'Billares Don Miguel', 'version': appVersion});
-      response.headers.contentType = ContentType('application', 'json', charset: 'utf-8'); response.write(body);
-    } else if (request.uri.path == '/api/state') {
-      final String body = jsonEncode(stateMap());
-      response.headers.contentType = ContentType('application', 'json', charset: 'utf-8'); response.write(body);
-    } else if (request.uri.path == '/tv' || request.uri.path == '/') {
-      response.headers.contentType = ContentType('text', 'html', charset: 'utf-8'); response.write(tvHtml);
-    } else { response.statusCode = HttpStatus.notFound; response.write('Not found'); }
+    if (request.uri.path == '/health') { response.headers.contentType = ContentType('application', 'json', charset: 'utf-8'); response.write(jsonEncode(<String, dynamic>{'ok': true, 'app': 'Billares Don Miguel', 'version': appVersion})); }
+    else if (request.uri.path == '/api/state') { response.headers.contentType = ContentType('application', 'json', charset: 'utf-8'); response.write(jsonEncode(stateMap())); }
+    else if (request.uri.path == '/tv' || request.uri.path == '/') { response.headers.contentType = ContentType('text', 'html', charset: 'utf-8'); response.write(tvHtml); }
+    else { response.statusCode = HttpStatus.notFound; response.write('Not found'); }
     await response.close();
   }
 '''
 s2 = re.sub(r"  Future<void> startLanServer\(\) async \{.*?\n  Map<String, dynamic> stateMap\(\)", server + "\n  Map<String, dynamic> stateMap()", s, count=1, flags=re.S)
-if s2 == s:
-    raise SystemExit('No se encontró startLanServer')
+if s2 == s: raise SystemExit('No se encontró startLanServer')
 s = s2
 
 if 'String get tvHtml {' not in s:
     placeholder = "  String get tvHtml { return '<!doctype html><html><body><div id=\\\"grid\\\"></div></body></html>'; }\n"
     marker = '  Map<String, dynamic> stateMap()'
-    if marker not in s:
-        raise SystemExit('No se encontró stateMap para insertar tvHtml')
+    if marker not in s: raise SystemExit('No se encontró stateMap para insertar tvHtml')
     s = s.replace(marker, placeholder + marker, 1)
 
 tv = r'''  String get tvHtml {
@@ -106,10 +78,8 @@ tv = r'''  String get tvHtml {
   }
 '''
 s2 = re.sub(r"  String get tvHtml \{.*?\n  \}", tv, s, count=1, flags=re.S)
-if s2 == s:
-    raise SystemExit('No se pudo generar tvHtml')
+if s2 == s: raise SystemExit('No se pudo generar tvHtml')
 s = s2
-
 s = s.replace('ACTION_CAST_SETTINGS_DISABLED', 'ACTION_CAST_SETTINGS')
 main.write_text(s)
 print('OK: dedicated TV web receiver repair generated')
