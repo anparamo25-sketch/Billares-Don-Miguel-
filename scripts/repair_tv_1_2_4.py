@@ -4,10 +4,12 @@ TARGET = Path('lib/main.dart')
 
 
 def rename_all_generated(source: str, signature: str, legacy_prefix: str) -> str:
-    """Rename every old generated definition uniquely, without parsing its body."""
     index = 1
     while signature in source:
-        replacement = f"  {legacy_prefix}{index} {{"
+        if signature.startswith('  Future<void>'):
+            replacement = f'  Future<void> {legacy_prefix}{index}() async {{'
+        else:
+            replacement = f'  String get {legacy_prefix}{index} {{'
         source = source.replace(signature, replacement, 1)
         index += 1
     return source
@@ -22,10 +24,16 @@ def insert_before(source: str, marker: str, text: str) -> str:
 
 s = TARGET.read_text()
 
-# Do not try to parse the old HTML/Dart method body. Rename every previous
-# generated definition uniquely, then install exactly one active definition.
-s = rename_all_generated(s, '  Future<void> showTvConnection() async {', '  Future<void> showTvConnectionLegacy')
-s = rename_all_generated(s, '  String get tvHtml {', '  String get tvHtmlLegacy')
+s = rename_all_generated(
+    s,
+    '  Future<void> showTvConnection() async {',
+    'showTvConnectionLegacy',
+)
+s = rename_all_generated(
+    s,
+    '  String get tvHtml {',
+    'tvHtmlLegacy',
+)
 
 show_tv = '''  Future<void> showTvConnection() async {
     const String url = 'http://billaresdonmiguel.local/tv';
@@ -79,4 +87,4 @@ if s.count('  Future<void> showTvConnection() async {') != 1:
     raise SystemExit('TV REPAIR FAILED: showTvConnection no quedó exactamente una vez')
 
 TARGET.write_text(s)
-print('OK: receptor TV reconstruido; una sola definición activa y sin duplicados de firma')
+print('OK: receptor TV reconstruido con definiciones heredadas válidas y una sola definición activa')
