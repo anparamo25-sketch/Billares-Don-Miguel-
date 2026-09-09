@@ -5,7 +5,7 @@ import subprocess
 TARGET = Path('lib/main.dart')
 
 # Deterministic source transformations used by the release build.
-subprocess.check_call(['python3', 'scripts/apply_admin_ui_1_2_6.py'])
+subprocess.check_call(['python3', 'scripts/apply_admin_ui_1_2_6_fixed.py'])
 subprocess.check_call(['python3', 'scripts/fix_mdns_1_2_6.py'])
 subprocess.check_call(['python3', 'scripts/validate_generated_ui_1_2_6.py'])
 
