@@ -4,13 +4,12 @@ path = Path('scripts/repair_tv_1_2_4.py')
 s = path.read_text()
 old_start = "tv = r'''"
 new_start = 'tv = r"""'
-if old_start not in s:
+start = s.find(old_start)
+if start < 0:
     raise SystemExit('No se encontró el inicio de la plantilla tv')
-s = s.replace(old_start, new_start, 1)
-old_end = "\n'''\ns2 = re.sub(r\"  String get tvHtml \\\\{.*?\\n  \\\\}\", tv, s, count=1, flags=re.S)"
-new_end = '\n"""\ns2 = re.sub(r"  String get tvHtml \\{.*?\\n  \\}", tv, s, count=1, flags=re.S)'
-if old_end not in s:
+end = s.rfind("\n'''")
+if end <= start:
     raise SystemExit('No se encontró el cierre de la plantilla tv')
-s = s.replace(old_end, new_end, 1)
+s = s[:start] + new_start + s[start + len(old_start):end] + '\n"""' + s[end + len("\n'''"):]
 path.write_text(s)
 print('OK: reparación de sintaxis del script TV aplicada')
