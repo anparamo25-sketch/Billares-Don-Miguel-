@@ -6,7 +6,8 @@ import py_compile
 TARGET = Path('lib/main.dart')
 STABLE_COMMIT = '5e5ec88e7f6c12f5c1dae006ad95da4b903f950d'
 
-for script in ('scripts/prepare_1_2_4.py', 'scripts/repair_1_2_4_generated.py', 'scripts/repair_tv_script_syntax.py', 'scripts/repair_tv_hostname_1_2_5.py'):
+# Preflight: validar todos los generadores reales antes de modificar main.dart.
+for script in ('scripts/prepare_1_2_4.py', 'scripts/repair_1_2_4_generated.py', 'scripts/repair_tv_1_2_4.py', 'scripts/repair_tv_hostname_1_2_5.py'):
     try:
         py_compile.compile(script, doraise=True)
     except py_compile.PyCompileError as exc:
@@ -22,6 +23,7 @@ def class_span(source: str, class_name: str):
     in_string = False
     quote = ''
     escaped = False
+    triple = False
     for i in range(brace, len(source)):
         ch = source[i]
         if in_string:
@@ -29,12 +31,20 @@ def class_span(source: str, class_name: str):
                 escaped = False
             elif ch == '\\':
                 escaped = True
-            elif ch == quote:
+            elif triple and source.startswith(quote * 3, i):
+                in_string = False
+                triple = False
+            elif not triple and ch == quote:
                 in_string = False
             continue
+        if source.startswith("'''", i):
+            in_string, quote, triple = True, "'", True
+            continue
+        if source.startswith('"""', i):
+            in_string, quote, triple = True, '"', True
+            continue
         if ch in ("'", '"'):
-            in_string = True
-            quote = ch
+            in_string, quote, triple = True, ch, False
             continue
         if ch == '{':
             depth += 1
@@ -53,11 +63,7 @@ def replace_class(source: str, class_name: str, replacement: str) -> str:
     return source[:a] + replacement + source[b:]
 
 current = TARGET.read_text()
-try:
-    baseline = subprocess.check_output(['git', 'show', f'{STABLE_COMMIT}:lib/main.dart'], text=True)
-except subprocess.CalledProcessError as exc:
-    raise SystemExit(f'No se pudo recuperar el main.dart estable {STABLE_COMMIT}: {exc}')
-
+baseline = subprocess.check_output(['git', 'show', f'{STABLE_COMMIT}:lib/main.dart'], text=True)
 current = replace_class(current, '_LoginPageState', extract_class(baseline, '_LoginPageState'))
 current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.5+125';", current, count=1)
 current = re.sub(r"const String updateManifestUrl = '[^']+';", "const String updateManifestUrl = 'https://github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json';", current, count=1)
@@ -80,11 +86,9 @@ for bad in ('checkingUpdate', 'showSettings', 'logout', 'dashboard()', 'historyP
 if "appVersion = '1.2.5+125'" not in current:
     raise SystemExit('REPAIR PREFLIGHT FAILED: versión 1.2.5+125 ausente')
 if 'class _DashboardPageState' not in current:
-    raise SystemExit('REPAIR PREFLIGHT FAILED: DashboardPage ausente')
+    raise SystemExit('REPAIR PREFLIGHT FAILED: Dashboard ausente')
 
 TARGET.write_text(current)
-subprocess.check_call(['python3', 'scripts/repair_tv_script_syntax.py'])
-py_compile.compile('scripts/repair_tv_1_2_4.py', doraise=True)
 subprocess.check_call(['python3', 'scripts/repair_tv_1_2_4.py'])
 py_compile.compile('scripts/repair_tv_hostname_1_2_5.py', doraise=True)
 subprocess.check_call(['python3', 'scripts/repair_tv_hostname_1_2_5.py'])
@@ -106,11 +110,12 @@ for marker, message in required.items():
     if marker not in current:
         raise SystemExit(f'REPAIR TV FAILED: {message}')
 
-if "replaceAll('\\\\', '\\\\\\\\')" in current:
-    raise SystemExit('REPAIR TV FAILED: escape inválido en initialState')
-
+if 'return r\''' in current:
+    raise SystemExit('REPAIR TV FAILED: delimitador Python quedó dentro del Dart generado')
+if 'replaceAll' in current and "replaceAll('\\\\', '\\\\\\\\')" in current:
+    raise SystemExit('REPAIR TV FAILED: escape inválido en Dart generado')
 if 'ACTION_CAST_SETTINGS' in current and 'Duplicar pantalla' not in current:
     raise SystemExit('REPAIR TV FAILED: ruta de duplicación de pantalla no está identificada')
 
 TARGET.write_text(current)
-print('OK: 1.2.5 source repaired; TV receiver and generated Dart preflight validated')
+print('OK: 1.2.5 source repaired; TV estructuralmente separado del Dashboard')
