@@ -99,8 +99,11 @@ if 'billaresdonmiguel.local' not in normalized:
     raise SystemExit('REPAIR TV FAILED: hostname TV ausente')
 if 'return r"""' in current or "return r'''" in current or 'String get tvHtml {' in current:
     raise SystemExit('REPAIR TV FAILED: TV heredada detectada')
-# Remove exactly the getter line for this syntax-only check so JavaScript tokens
-# inside the JSON-escaped HTML cannot affect the Dart source validation.
+# The mDNS producer previously wrote literal backslash-n sequences into Dart.
+# Reject that exact corruption before allowing the build to continue.
+for bad in ('\\nFuture<void> _startBillaresMdns()', '\\nFuture<String?> _billaresLocalIp()', '\\nFuture<void> _answerBillaresMdns('):
+    if bad in current:
+        raise SystemExit('REPAIR TV FAILED: mDNS contiene saltos de línea literales')
 outside_tv = current.replace(tv_line, '', 1)
 if '===' in outside_tv:
     raise SystemExit('REPAIR TV FAILED: JavaScript fuera del getter TV')
