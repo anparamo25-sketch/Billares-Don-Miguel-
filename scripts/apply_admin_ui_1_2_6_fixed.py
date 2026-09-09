@@ -119,16 +119,28 @@ def remove_duplicate_local_ip(source):
     return source
 
 
+def preserve_real_dashboard_actions(source):
+    # The real DashboardPage already owns the table controls. Normalize only
+    # the visible label of its existing start action; do not rebuild or remove
+    # the Dashboard implementation.
+    old = "final String buttonText = table.status == TableStatus.available ? 'Iniciar' : table.status == TableStatus.playing ? 'Finalizar' : 'Cobrar';"
+    new = "final String buttonText = table.status == TableStatus.available ? 'Iniciar juego' : table.status == TableStatus.playing ? 'Finalizar juego' : 'Cobrar';"
+    if old in source:
+        return source.replace(old, new, 1)
+    if "'Iniciar juego'" in source:
+        return source
+    raise SystemExit('ADMIN UI FAILED: acción real de inicio ausente en DashboardPage')
+
+
 source = TARGET.read_text()
 
 # Structural source correction only:
 # 1) keep exactly one local-IP helper;
-# 2) make BillaresApp the application root.
-# The administrative DashboardPage is deliberately NOT rebuilt here. Its real
-# implementation is produced by rebuild_tv_1_2_6.py and must remain intact,
-# including the real start/finish/collect actions and responsive navigation.
+# 2) make BillaresApp the application root;
+# 3) preserve the real DashboardPage and normalize its existing action labels.
 source = remove_duplicate_local_ip(source)
 source = repair_app_root(source)
+source = preserve_real_dashboard_actions(source)
 
 TARGET.write_text(source)
-print('OK: raíz Dart normalizada; DashboardPage administrativo preservado sin reconstrucción destructiva')
+print('OK: raíz Dart normalizada; DashboardPage administrativo preservado y acciones reales normalizadas')
