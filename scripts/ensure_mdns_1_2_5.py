@@ -75,9 +75,8 @@ def ensure_http_bind(s):
     marker = re.search(r'\bMap<String,\s*dynamic>\s+stateMap\s*\(\)|\bFuture<void>\s+showTvConnection\s*\(\)|\bString\s+get\s+tvHtml\s*=>', s)
     if not marker:
         raise SystemExit('mDNS ENSURE FAILED: no se encontró receptor TV real')
-    # Insert the canonical server method directly before the receiver state map.
     server = '''\n  Future<void> startLanServer() async {\n    try {\n      server = await HttpServer.bind(InternetAddress.anyIPv4, 80, shared: true);\n      server!.listen(handleRequest, onError: (_) {});\n      await _startBillaresMdns();\n      if (mounted) setState(() {});\n    } catch (_) {}\n  }\n'''
-    return s[:marker.start()] + server + s[marker.start():]
+    return s[:marker.start()] + server.replace('\\n', '\n') + s[marker.start():]
 
 
 s = TARGET.read_text()
@@ -95,14 +94,12 @@ args = s[open_pos + 1:close_pos]
 if not re.search(r'InternetAddress\.anyIPv4\s*,\s*80\b', args):
     raise SystemExit('mDNS ENSURE FAILED: servidor HTTP no está en puerto 80')
 
-# The mDNS implementation is deliberately top-level: it does not depend on any
-# generated Dashboard class name. Only the startup call is coupled to the actual
-# HttpServer.bind statement, which is the stable structural anchor of the server.
 insert_at = 0
 imports = list(re.finditer(r'(?m)^import\s+[^\n]+\n', s))
 if imports:
     insert_at = imports[-1].end()
-s = s[:insert_at] + '\n' + FIELD + '\n' + METHODS + s[insert_at:]
+methods = METHODS.replace('\\n', '\n')
+s = s[:insert_at] + '\n' + FIELD + '\n' + methods + s[insert_at:]
 
 bind = re.search(r'\bHttpServer\s*\.\s*bind\s*\(', s)
 open_pos = s.find('(', bind.start()); close_pos = match_paren(s, open_pos)
