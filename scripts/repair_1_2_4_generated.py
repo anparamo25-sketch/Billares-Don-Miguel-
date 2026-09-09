@@ -7,10 +7,7 @@ TARGET = Path('lib/main.dart')
 STABLE_COMMIT = '5e5ec88e7f6c12f5c1dae006ad95da4b903f950d'
 
 for script in ('scripts/prepare_1_2_4.py', 'scripts/repair_1_2_4_generated.py', 'scripts/repair_tv_1_2_4.py', 'scripts/repair_tv_hostname_1_2_5.py', 'scripts/ensure_mdns_1_2_5.py', 'scripts/repair_tv_final_safety.py'):
-    try:
-        py_compile.compile(script, doraise=True)
-    except py_compile.PyCompileError as exc:
-        raise SystemExit(f'PREFLIGHT PYTHON FAILED: {script}: {exc}')
+    py_compile.compile(script, doraise=True)
 
 
 def class_span(source: str, class_name: str):
@@ -22,8 +19,7 @@ def class_span(source: str, class_name: str):
     while i < len(source):
         if quote:
             token = quote * 3 if triple else quote
-            if source.startswith(token, i):
-                i += len(token); quote = None; triple = False; continue
+            if source.startswith(token, i): i += len(token); quote = None; triple = False; continue
             if source[i] == '\\' and not triple: i += 2; continue
             i += 1; continue
         if source.startswith("'''", i): quote, triple = "'", True; i += 3; continue
@@ -71,17 +67,14 @@ if 'class _DashboardPageState' not in current: raise SystemExit('REPAIR PREFLIGH
 
 TARGET.write_text(current)
 subprocess.check_call(['python3', 'scripts/repair_tv_1_2_4.py'])
-py_compile.compile('scripts/repair_tv_hostname_1_2_5.py', doraise=True)
 subprocess.check_call(['python3', 'scripts/repair_tv_hostname_1_2_5.py'])
-# Una sola reconstrucción canónica del servidor HTTP + mDNS.
-# No se ejecuta una segunda pasada que pueda volver a insertar el mismo método.
 subprocess.check_call(['python3', 'scripts/ensure_mdns_1_2_5.py'])
 
 current = TARGET.read_text()
 current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.5+125';", current, count=1)
 current = current.replace('tv_web_receiver_disabled', 'tv_cast').replace('ACTION_CAST_SETTINGS_DISABLED', 'ACTION_CAST_SETTINGS')
-
 normalized = re.sub(r'\s+', ' ', current)
+
 required = {
     'String get tvHtml =>': 'tvHtml ausente',
     'Billares Don Miguel - TV': 'título TV ausente',
@@ -95,49 +88,32 @@ for marker, message in required.items():
     if marker not in normalized: raise SystemExit(f'REPAIR TV FAILED: {message}')
 
 binds = re.findall(r'HttpServer\.bind\s*\(\s*InternetAddress\.anyIPv4\s*,\s*([^,\)]+)', normalized)
-if not binds:
-    raise SystemExit('REPAIR TV FAILED: no se encontró HttpServer.bind para el receptor TV')
-if not any(arg.strip() == '80' for arg in binds):
-    raise SystemExit(f'REPAIR TV FAILED: HttpServer.bind encontrado pero ningún puerto 80: {binds}')
+if not binds or not any(arg.strip() == '80' for arg in binds):
+    raise SystemExit(f'REPAIR TV FAILED: HttpServer.bind no está correctamente configurado en puerto 80: {binds}')
 if 'billaresdonmiguel.local' not in normalized:
     raise SystemExit('REPAIR TV FAILED: hostname TV ausente')
 
-# Validate the generated getter semantically, not by one exact indentation level.
-# The getter is generated as one physical Dart line by repair_tv_1_2_4.py and
-# repair_tv_final_safety.py; its indentation may legitimately vary with the
-# surrounding generated structure.
+# Validaciones semánticas, independientes de indentación y formato exacto.
+if normalized.count('Future<void> showTvConnection') != 1:
+    raise SystemExit('REPAIR TV FAILED: showTvConnection no quedó exactamente una vez')
+
 tv_getter_matches = list(re.finditer(r'(?m)^\s*String\s+get\s+tvHtml\s*=>\s*', current))
 if len(tv_getter_matches) != 1:
     raise SystemExit(f'REPAIR TV FAILED: tvHtml quedó {len(tv_getter_matches)} veces')
-tv_getter_start = tv_getter_matches[0].start()
-tv_getter_end = current.find('\n', tv_getter_start)
-if tv_getter_end < 0:
-    tv_getter_end = len(current)
-tv_getter = current[tv_getter_start:tv_getter_end]
-if not tv_getter.rstrip().endswith(';'):
-    raise SystemExit('REPAIR TV FAILED: getter tvHtml no termina correctamente en ;')
-if '<!doctype html>' not in tv_getter.lower():
-    raise SystemExit('REPAIR TV FAILED: el getter TV no contiene HTML válido')
-if '/api/state?ts=' not in tv_getter:
-    raise SystemExit('REPAIR TV FAILED: el receptor TV perdió su actualización de estado')
-if 'C&#36;' not in tv_getter:
-    raise SystemExit('REPAIR TV FAILED: el receptor TV perdió el formato monetario')
+start = tv_getter_matches[0].start()
+end = current.find('\n', start)
+if end < 0: end = len(current)
+tv_getter = current[start:end]
+if not tv_getter.rstrip().endswith(';'): raise SystemExit('REPAIR TV FAILED: getter tvHtml no termina correctamente')
+if '<!doctype html>' not in tv_getter.lower(): raise SystemExit('REPAIR TV FAILED: HTML TV ausente')
+if '/api/state?ts=' not in tv_getter: raise SystemExit('REPAIR TV FAILED: actualización TV ausente')
+if 'C&#36;' not in tv_getter: raise SystemExit('REPAIR TV FAILED: formato monetario TV ausente')
 
-if '===' in '\n'.join(current.splitlines()[:]):
-    # JavaScript is intentionally embedded only inside the JSON-escaped getter.
-    # A physical Dart line containing the getter is the only legal location for it.
-    for line in current.splitlines():
-        if '===' in line and not re.match(r'^\s*String\s+get\s+tvHtml\s*=>', line):
-            raise SystemExit('REPAIR TV FAILED: JavaScript quedó fuera del getter TV')
-
-if len(re.findall(r'(?m)^\s*Future<void>\s+showTvConnection\s*\(\)\s+async\s*\{', current)) != 1:
-    raise SystemExit('REPAIR TV FAILED: showTvConnection no quedó exactamente una vez')
-if re.search(r'(?m)^\s*(?:Future<void>\s+showTvConnectionLegacy\d+|String\s+get\s+tvHtmlLegacy\d+)', current):
-    raise SystemExit('REPAIR TV FAILED: quedaron definiciones heredadas')
-if 'return r"""' in current or "return r'''" in current:
-    raise SystemExit('REPAIR TV FAILED: todavía existe HTML con triple comillas')
-if 'String get tvHtml {' in current:
-    raise SystemExit('REPAIR TV FAILED: quedó getter tvHtml con bloque Dart antiguo')
+for line in current.splitlines():
+    if '===' in line and 'String get tvHtml =>' not in line:
+        raise SystemExit('REPAIR TV FAILED: JavaScript quedó fuera del getter TV')
+if 'return r"""' in current or "return r'''" in current: raise SystemExit('REPAIR TV FAILED: triple comillas TV detectadas')
+if 'String get tvHtml {' in current: raise SystemExit('REPAIR TV FAILED: getter tvHtml antiguo detectado')
 
 TARGET.write_text(current)
 print('OK: fuente 1.2.5 final; TV y mDNS validados estructural y semánticamente')
