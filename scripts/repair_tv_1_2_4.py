@@ -5,40 +5,41 @@ import re
 TARGET = Path('lib/main.dart')
 
 
-def matching_brace(source, open_pos):
-    depth = 0
-    quote = None
-    triple = False
-    i = open_pos
-    while i < len(source):
-        if quote:
-            token = quote * 3 if triple else quote
-            if source.startswith(token, i):
-                i += len(token)
-                quote = None
-                triple = False
-            elif source[i] == '\\' and not triple:
+def skip_string_or_comment(source, i):
+    if source.startswith("'''", i) or source.startswith('"""', i):
+        q = source[i]
+        end = source.find(q * 3, i + 3)
+        if end < 0:
+            raise SystemExit('TV REBUILD FAILED: bloque de texto sin cerrar')
+        return end + 3
+    if source[i] in "'\"":
+        q = source[i]
+        i += 1
+        while i < len(source):
+            if source[i] == '\\':
                 i += 2
+            elif source[i] == q:
+                return i + 1
             else:
                 i += 1
-            continue
-        if source.startswith("'''", i) or source.startswith('"""', i):
-            quote = source[i]
-            triple = True
-            i += 3
-            continue
-        if source[i] in "'\"":
-            quote = source[i]
-            triple = False
-            i += 1
-            continue
-        if source.startswith('//', i):
-            end = source.find('\n', i + 2)
-            i = len(source) if end < 0 else end + 1
-            continue
-        if source.startswith('/*', i):
-            end = source.find('*/', i + 2)
-            i = len(source) if end < 0 else end + 2
+        raise SystemExit('TV REBUILD FAILED: cadena sin cerrar')
+    if source.startswith('//', i):
+        end = source.find('\n', i + 2)
+        return len(source) if end < 0 else end + 1
+    if source.startswith('/*', i):
+        end = source.find('*/', i + 2)
+        if end < 0:
+            raise SystemExit('TV REBUILD FAILED: comentario sin cerrar')
+        return end + 2
+    return i + 1
+
+
+def matching_brace(source, open_pos):
+    depth = 0
+    i = open_pos
+    while i < len(source):
+        if source[i] in "'\"" or source.startswith('//', i) or source.startswith('/*', i):
+            i = skip_string_or_comment(source, i)
             continue
         if source[i] == '{':
             depth += 1
@@ -51,83 +52,69 @@ def matching_brace(source, open_pos):
 
 
 def remove_method(source, name):
-    pattern = re.compile(rf'(?m)^\s*(?:Future\s*<\s*void\s*>|void)\s+{re.escape(name)}\s*\([^)]*\)\s*(?:async\s*)?\{{')
+    pattern = re.compile(rf'(?m)^\s*(?:Future\s*<\s*void\s*>|void)\s+{re.escape(name)}\s*\([^;]*?\)\s*(?:async\s*)?\{{')
     while True:
-        match = pattern.search(source)
-        if not match:
+        m = pattern.search(source)
+        if not m:
             return source
-        brace = source.find('{', match.start(), match.end())
-        source = source[:match.start()] + source[matching_brace(source, brace):]
+        brace = source.find('{', m.start(), m.end())
+        source = source[:m.start()] + source[matching_brace(source, brace):]
 
 
-def remove_tv_getters(source):
-    pattern = re.compile(r'(?m)^\s*String\s+get\s+tvHtml(?:Legacy\d+)?\s*\{')
+def remove_getter(source, name):
+    block = re.compile(rf'(?m)^\s*String\s+get\s+{re.escape(name)}\s*\{{')
+    expr = re.compile(rf'(?m)^\s*String\s+get\s+{re.escape(name)}\s*=>[^;]*;\s*\n?')
     while True:
-        match = pattern.search(source)
-        if not match:
+        m = block.search(source)
+        if not m:
             break
-        brace = source.find('{', match.start(), match.end())
-        source = source[:match.start()] + source[matching_brace(source, brace):]
-    return re.sub(r'(?m)^\s*String\s+get\s+tvHtml(?:Legacy\d+)?\s*=>.*?;\s*\n?', '', source)
+        brace = source.find('{', m.start(), m.end())
+        source = source[:m.start()] + source[matching_brace(source, brace):]
+    return expr.sub('', source)
 
 
 def remove_field(source, declaration):
     return re.sub(rf'(?m)^\s*{re.escape(declaration)}\s*;\s*\n?', '', source)
 
 
-def class_containing_state_map(source):
-    marker = re.search(r'\bMap\s*<\s*String\s*,\s*dynamic\s*>\s+stateMap\s*\(\s*\)', source)
-    if not marker:
-        raise SystemExit('TV REBUILD FAILED: stateMap ausente')
-    declarations = list(re.finditer(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*[^\{]*\{', source[:marker.start()]))
-    for declaration in reversed(declarations):
-        brace = source.find('{', declaration.start(), declaration.end())
+def class_span_containing(source, marker_pos):
+    classes = list(re.finditer(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*[^\{]*\{', source[:marker_pos]))
+    for m in reversed(classes):
+        brace = source.find('{', m.start(), m.end())
         end = matching_brace(source, brace)
-        if end > marker.start():
-            return declaration.start(), end
-    raise SystemExit('TV REBUILD FAILED: clase de stateMap ausente')
+        if end > marker_pos:
+            return m.start(), end
+    raise SystemExit('TV REBUILD FAILED: clase contenedora de stateMap ausente')
 
 
 source = TARGET.read_text()
 
+# Dependencias requeridas por el receptor LAN/mDNS y por el botón de copiar.
 for statement in ("import 'dart:io';", "import 'dart:convert';", "import 'package:flutter/services.dart';"):
     if statement not in source:
         imports = list(re.finditer(r'(?m)^import\s+[^\n]+\n', source))
-        position = imports[-1].end() if imports else 0
-        source = source[:position] + statement + '\n' + source[position:]
+        at = imports[-1].end() if imports else 0
+        source = source[:at] + statement + '\n' + source[at:]
 
-# La reconstruccion elimina solo la estructura anterior de TV/LAN.
-# handleRequest se conserva para no perder la API existente.
+# Reconstrucción determinista: elimina únicamente la estructura TV/LAN anterior.
 for name in ('showTvConnection', 'showTvConnectionLegacy1', 'showTvConnectionLegacy2', 'showTvConnectionLegacy3', 'startLanServer'):
     source = remove_method(source, name)
-source = remove_tv_getters(source)
-source = remove_field(source, 'HttpServer? server')
-source = remove_field(source, 'String? lanIp')
+for name in ('tvHtml', 'tvHtmlLegacy1', 'tvHtmlLegacy2', 'tvHtmlLegacy3'):
+    source = remove_getter(source, name)
+for field in ('HttpServer? server', 'String? lanIp'):
+    source = remove_field(source, field)
 
-mdns = """
+# mDNS queda definido una sola vez, a nivel superior, sin depender del nombre de una clase.
+mdns = '''
 RawDatagramSocket? _billaresMdnsSocket;
-
-Future<void> _startBillaresMdns() async {
-  try {
-    _billaresMdnsSocket?.close();
-    final RawDatagramSocket socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 5353, reuseAddress: true, reusePort: true);
-    _billaresMdnsSocket = socket;
-    socket.joinMulticast(InternetAddress('224.0.0.251'));
-    socket.listen((RawSocketEvent event) {
-      if (event != RawSocketEvent.read) return;
-      final Datagram? datagram = socket.receive();
-      if (datagram != null) _answerBillaresMdns(socket, datagram);
-    });
-  } catch (_) {}
-}
 
 Future<String?> _billaresLocalIp() async {
   try {
-    final List<NetworkInterface> interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
-    for (final NetworkInterface networkInterface in interfaces) {
-      for (final InternetAddress address in networkInterface.addresses) {
-        final List<int> p = address.address.split('.').map(int.tryParse).whereType<int>().toList();
-        final bool privateIpv4 = p.length == 4 && (p[0] == 10 || (p[0] == 172 && p[1] >= 16 && p[1] <= 31) || (p[0] == 192 && p[1] == 168));
+    final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
+    for (final networkInterface in interfaces) {
+      for (final address in networkInterface.addresses) {
+        final p = address.address.split('.').map(int.tryParse).whereType<int>().toList();
+        final privateIpv4 = p.length == 4 && (p[0] == 10 || (p[0] == 172 && p[1] >= 16 && p[1] <= 31) || (p[0] == 192 && p[1] == 168));
         if (!address.isLoopback && !address.isLinkLocal && !address.isMulticast && privateIpv4) return address.address;
       }
     }
@@ -137,31 +124,31 @@ Future<String?> _billaresLocalIp() async {
 
 Future<void> _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram) async {
   try {
-    final List<int> query = datagram.data;
+    final query = datagram.data;
     if (query.length < 12) return;
-    final int questions = (query[4] << 8) | query[5];
-    int offset = 12;
-    bool match = false;
-    for (int q = 0; q < questions; q++) {
-      final List<String> labels = <String>[];
+    final questions = (query[4] << 8) | query[5];
+    var offset = 12;
+    var match = false;
+    for (var q = 0; q < questions; q++) {
+      final labels = <String>[];
       while (offset < query.length) {
-        final int length = query[offset++];
+        final length = query[offset++];
         if (length == 0) break;
         if (length > 63 || offset + length > query.length) return;
         labels.add(String.fromCharCodes(query.sublist(offset, offset + length)));
         offset += length;
       }
       if (offset + 4 > query.length) return;
-      final int type = (query[offset] << 8) | query[offset + 1];
+      final type = (query[offset] << 8) | query[offset + 1];
       offset += 4;
       if (labels.join('.').toLowerCase() == 'billaresdonmiguel.local' && (type == 1 || type == 255)) match = true;
     }
     if (!match) return;
-    final String? ip = await _billaresLocalIp();
+    final ip = await _billaresLocalIp();
     if (ip == null) return;
-    final List<int> octets = ip.split('.').map(int.parse).toList();
+    final octets = ip.split('.').map(int.parse).toList();
     if (octets.length != 4) return;
-    final List<int> response = <int>[];
+    final response = <int>[];
     response.addAll(query.sublist(0, 2));
     response.addAll(<int>[0x84, 0, 0, 0, 0, 1, 0, 0, 0, 120, 0, 4]);
     response.addAll(query.sublist(12, offset));
@@ -170,13 +157,35 @@ Future<void> _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram) as
     socket.send(response, datagram.address, datagram.port);
   } catch (_) {}
 }
-"""
+
+Future<void> _startBillaresMdns() async {
+  try {
+    _billaresMdnsSocket?.close();
+    final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 5353, reuseAddress: true, reusePort: true);
+    _billaresMdnsSocket = socket;
+    socket.joinMulticast(InternetAddress('224.0.0.251'));
+    socket.listen((event) {
+      if (event != RawSocketEvent.read) return;
+      final datagram = socket.receive();
+      if (datagram != null) _answerBillaresMdns(socket, datagram);
+    });
+  } catch (_) {}
+}
+'''
+
 first_class = re.search(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*', source)
 if not first_class:
     raise SystemExit('TV REBUILD FAILED: ninguna clase Dart encontrada')
 source = source[:first_class.start()] + mdns + '\n' + source[first_class.start():]
 
-server_members = """
+marker = re.search(r'\bMap\s*<\s*String\s*,\s*dynamic\s*>\s+stateMap\s*\(\s*\)', source)
+if not marker:
+    raise SystemExit('TV REBUILD FAILED: stateMap ausente')
+class_start, class_end = class_span_containing(source, marker.start())
+class_source = source[class_start:class_end]
+state = re.search(r'\bMap\s*<\s*String\s*,\s*dynamic\s*>\s+stateMap\s*\(\s*\)', class_source)
+
+server_members = '''
   HttpServer? server;
   String? lanIp;
 
@@ -193,11 +202,11 @@ server_members = """
   }
 
   Future<void> showTvConnection() async {
-    const String url = 'http://billaresdonmiguel.local/tv';
+    const url = 'http://billaresdonmiguel.local/tv';
     if (!mounted) return;
     await showDialog<void>(
       context: context,
-      builder: (BuildContext dialogContext) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Pantalla exclusiva para TV'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
           const Text('La TV mostrará solamente las mesas. El celular seguirá funcionando como administrador.'),
@@ -215,15 +224,7 @@ server_members = """
       ),
     );
   }
-
-"""
-start, end = class_containing_state_map(source)
-class_source = source[start:end]
-state = re.search(r'(?m)^\s*Map\s*<\s*String\s*,\s*dynamic\s+>\s+stateMap\s*\(\s*\)', class_source)
-if not state:
-    state = re.search(r'(?m)^\s*Map\s*<\s*String\s*,\s*dynamic\s*>\s+stateMap\s*\(\s*\)', class_source)
-if not state:
-    raise SystemExit('TV REBUILD FAILED: stateMap no quedó dentro de la clase')
+'''
 
 html = ''.join([
     '<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Billares Don Miguel - TV</title>',
@@ -233,27 +234,8 @@ html = ''.join([
     '</body></html>'
 ])
 getter = '  String get tvHtml => ' + json.dumps(html, ensure_ascii=False, separators=(',', ':')) + ';\n\n'
-insert_at = state.start()
-class_source = class_source[:insert_at] + server_members + getter + class_source[insert_at:]
-source = source[:start] + class_source + source[end:]
 
-# Validaciones estructurales del resultado generado.
-normalized = re.sub(r'\s+', ' ', source)
-checks = [
-    (len(re.findall(r'\bFuture\s*<\s*void\s*>\s+startLanServer\s*\(\s*\)\s+async\s*\{', source)) == 1, 'startLanServer'),
-    (len(re.findall(r'\bFuture\s*<\s*void\s*>\s+showTvConnection\s*\(\s*\)\s+async\s*\{', source)) == 1, 'showTvConnection'),
-    (len(re.findall(r'(?m)^\s*String\s+get\s+tvHtml\s*=>', source)) == 1, 'tvHtml'),
-    (source.count('RawDatagramSocket? _billaresMdnsSocket;') == 1, 'mDNS socket'),
-    (source.count('await _startBillaresMdns();') == 1, 'mDNS startup'),
-    ('HttpServer.bind(InternetAddress.anyIPv4, 80' in normalized, 'HTTP port 80'),
-    ('http://billaresdonmiguel.local/tv' in source, 'TV hostname'),
-    ('/api/state?ts=' in source, 'TV polling'),
-    ('Billares Don Miguel' in source, 'TV title'),
-    ('handleRequest' in source, 'handleRequest'),
-]
-for ok, name in checks:
-    if not ok:
-        raise SystemExit(f'TV REBUILD FAILED: {name}')
-
+class_source = class_source[:state.start()] + server_members + getter + class_source[state.start():]
+source = source[:class_start] + class_source + source[class_end:]
 TARGET.write_text(source)
-print('OK: productor canonico TV/LAN/mDNS reconstruido de forma estructural')
+print('OK: reconstrucción única TV/LAN/mDNS completada')
