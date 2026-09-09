@@ -2,6 +2,7 @@ name: Billares Don Miguel - Build APK
 
 # Compilación limpia de distribución 1.2.5+125.
 # TV/LAN/mDNS se reconstruye una sola vez con scripts/rebuild_tv_1_2_5.py.
+# El productor se valida antes de modificar lib/main.dart y el pipeline solo publica si el APK termina correctamente.
 on:
   push:
     branches: [main]
@@ -63,6 +64,8 @@ jobs:
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
       - name: Preparar versión 1.2.5
         run: python3 scripts/prepare_1_2_4.py
+      - name: Validar productor canónico TV/LAN/mDNS
+        run: python3 -m py_compile scripts/rebuild_tv_1_2_5.py && python3 scripts/ensure_mdns_1_2_5.py
       - name: Reconstruir y validar fuente 1.2.5
         run: python3 scripts/repair_1_2_4_generated.py
       - name: Configurar Android para LAN, actualizaciones, segundo plano y compatibilidad
