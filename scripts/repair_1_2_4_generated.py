@@ -74,6 +74,9 @@ subprocess.check_call(['python3', 'scripts/repair_tv_1_2_4.py'])
 py_compile.compile('scripts/repair_tv_hostname_1_2_5.py', doraise=True)
 subprocess.check_call(['python3', 'scripts/repair_tv_hostname_1_2_5.py'])
 subprocess.check_call(['python3', 'scripts/ensure_mdns_1_2_5.py'])
+# Segunda pasada intencional: garantiza que el receptor mDNS permanezca presente
+# después de cualquier reconstrucción final del receptor TV.
+subprocess.check_call(['python3', 'scripts/ensure_mdns_1_2_5.py'])
 
 current = TARGET.read_text()
 current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.5+125';", current, count=1)
@@ -100,7 +103,6 @@ if not any(arg.strip() == '80' for arg in binds):
 if 'billaresdonmiguel.local' not in normalized:
     raise SystemExit('REPAIR TV FAILED: hostname TV ausente')
 
-# El getter debe ser exactamente una línea física y el HTML no puede escaparse del string.
 tv_getter_lines = [line for line in current.splitlines() if line.startswith('  String get tvHtml => ')]
 if len(tv_getter_lines) != 1:
     raise SystemExit(f'REPAIR TV FAILED: tvHtml quedó {len(tv_getter_lines)} veces')
