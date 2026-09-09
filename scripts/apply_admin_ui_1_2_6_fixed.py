@@ -66,10 +66,6 @@ def top_level_function_spans(source, marker):
 
 
 def repair_app_root(source):
-    # Replace the entire BillaresApp class, not only its build method.
-    # This removes any accidentally injected Dashboard methods from the
-    # application-root class and leaves DashboardPage as the sole owner of
-    # dashboard state/actions.
     class_start, class_end = class_span(source, 'BillaresApp')
     clean_class = '''class BillaresApp extends StatelessWidget {
   const BillaresApp({super.key});
@@ -101,9 +97,6 @@ def remove_duplicate_local_ip(source):
 
 
 def preserve_real_dashboard_actions(source):
-    # The real DashboardPage already owns the table controls. Normalize only
-    # the visible label of its existing start action; do not rebuild or remove
-    # the Dashboard implementation.
     old = "final String buttonText = table.status == TableStatus.available ? 'Iniciar' : table.status == TableStatus.playing ? 'Finalizar' : 'Cobrar';"
     new = "final String buttonText = table.status == TableStatus.available ? 'Iniciar juego' : table.status == TableStatus.playing ? 'Finalizar juego' : 'Cobrar';"
     if old in source:
@@ -113,15 +106,87 @@ def preserve_real_dashboard_actions(source):
     raise SystemExit('ADMIN UI FAILED: acción real de inicio ausente en DashboardPage')
 
 
-source = TARGET.read_text()
+def ensure_workday_view(source):
+    dashboard_start, dashboard_end = class_span(source, '_DashboardPageState')
+    dashboard = source[dashboard_start:dashboard_end]
+    if 'Widget workdayView()' in dashboard:
+        return source
+    method = '''
+  Widget workdayView() {
+    final String opened = workdayOpenedAt == null ? '—' : workdayOpenedAt!.toString().replaceFirst('T', ' ').split('.').first;
+    final String closed = workdayClosedAt == null ? '—' : workdayClosedAt!.toString().replaceFirst('T', ' ').split('.').first;
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final int columns = constraints.maxWidth >= 900 ? 4 : constraints.maxWidth >= 600 ? 2 : 1;
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Row(
+                    children: <Widget>[
+                      Icon(workdayActive ? Icons.lock_open : Icons.lock_outline, color: workdayActive ? Colors.green : Colors.orange, size: 30),
+                      const SizedBox(width: 12),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+                        const Text('Jornada de trabajo', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold)),
+                        Text(workdayActive ? 'ABIERTA' : 'CERRADA', style: TextStyle(color: workdayActive ? Colors.green : Colors.orange, fontWeight: FontWeight.bold)),
+                      ])),
+                      FilledButton.icon(
+                        onPressed: workdayActive ? closeWorkday : openWorkday,
+                        icon: Icon(workdayActive ? Icons.lock : Icons.lock_open),
+                        label: Text(workdayActive ? 'Cerrar jornada' : 'Abrir jornada'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              GridView.count(
+                crossAxisCount: columns,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: constraints.maxWidth >= 600 ? 2.3 : 2.8,
+                children: <Widget>[
+                  _summaryCard('Juegos', '$workdayGames', Icons.sports_bar),
+                  _summaryCard('Generado hoy', 'C$ ${workdayGenerated.toStringAsFixed(2)}', Icons.payments),
+                  _summaryCard('Efectivo físico', 'C$ ${workdayCashClose.toStringAsFixed(2)}', Icons.account_balance_wallet),
+                  _summaryCard('Apertura', opened, Icons.schedule),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+                const Text('Detalle de jornada', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 10),
+                Text('Inicio: $opened'),
+                Text('Cierre: $closed'),
+                Text('Partidas registradas: $workdayGames'),
+                Text('Total generado: C$ ${workdayGenerated.toStringAsFixed(2)}'),
+                Text('Efectivo físico al cierre: C$ ${workdayCashClose.toStringAsFixed(2)}'),
+              ]))),
+            ],
+          ),
+        );
+      },
+    );
+  }
+'''
+    insert_at = dashboard.rfind('\n}')
+    if insert_at < 0:
+        raise SystemExit('ADMIN UI FAILED: DashboardPageState sin cierre válido')
+    dashboard = dashboard[:insert_at] + method + dashboard[insert_at:]
+    return source[:dashboard_start] + dashboard + source[dashboard_end:]
 
-# Structural source correction only:
-# 1) keep exactly one local-IP helper;
-# 2) replace the entire BillaresApp class with a clean application root;
-# 3) preserve the real DashboardPage and normalize its existing action labels.
+
+source = TARGET.read_text()
 source = remove_duplicate_local_ip(source)
 source = repair_app_root(source)
 source = preserve_real_dashboard_actions(source)
+source = ensure_workday_view(source)
 
 TARGET.write_text(source)
-print('OK: BillaresApp reconstruida estructuralmente; DashboardPage preservado y acciones reales normalizadas')
+print('OK: raíz de app corregida; Dashboard preservado, jornada implementada y acciones reales normalizadas')
