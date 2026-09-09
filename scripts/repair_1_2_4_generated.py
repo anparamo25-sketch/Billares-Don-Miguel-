@@ -73,9 +73,8 @@ TARGET.write_text(current)
 subprocess.check_call(['python3', 'scripts/repair_tv_1_2_4.py'])
 py_compile.compile('scripts/repair_tv_hostname_1_2_5.py', doraise=True)
 subprocess.check_call(['python3', 'scripts/repair_tv_hostname_1_2_5.py'])
-subprocess.check_call(['python3', 'scripts/ensure_mdns_1_2_5.py'])
-# Segunda pasada intencional: garantiza que el receptor mDNS permanezca presente
-# después de cualquier reconstrucción final del receptor TV.
+# Una sola reconstrucción canónica del servidor HTTP + mDNS.
+# No se ejecuta una segunda pasada que pueda volver a insertar el mismo método.
 subprocess.check_call(['python3', 'scripts/ensure_mdns_1_2_5.py'])
 
 current = TARGET.read_text()
