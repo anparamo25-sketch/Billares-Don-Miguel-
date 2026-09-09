@@ -102,20 +102,33 @@ if not any(arg.strip() == '80' for arg in binds):
 if 'billaresdonmiguel.local' not in normalized:
     raise SystemExit('REPAIR TV FAILED: hostname TV ausente')
 
-tv_getter_lines = [line for line in current.splitlines() if line.startswith('  String get tvHtml => ')]
-if len(tv_getter_lines) != 1:
-    raise SystemExit(f'REPAIR TV FAILED: tvHtml quedó {len(tv_getter_lines)} veces')
-tv_getter = tv_getter_lines[0]
+# Validate the generated getter semantically, not by one exact indentation level.
+# The getter is generated as one physical Dart line by repair_tv_1_2_4.py and
+# repair_tv_final_safety.py; its indentation may legitimately vary with the
+# surrounding generated structure.
+tv_getter_matches = list(re.finditer(r'(?m)^\s*String\s+get\s+tvHtml\s*=>\s*', current))
+if len(tv_getter_matches) != 1:
+    raise SystemExit(f'REPAIR TV FAILED: tvHtml quedó {len(tv_getter_matches)} veces')
+tv_getter_start = tv_getter_matches[0].start()
+tv_getter_end = current.find('\n', tv_getter_start)
+if tv_getter_end < 0:
+    tv_getter_end = len(current)
+tv_getter = current[tv_getter_start:tv_getter_end]
 if not tv_getter.rstrip().endswith(';'):
     raise SystemExit('REPAIR TV FAILED: getter tvHtml no termina correctamente en ;')
 if '<!doctype html>' not in tv_getter.lower():
     raise SystemExit('REPAIR TV FAILED: el getter TV no contiene HTML válido')
 if '/api/state?ts=' not in tv_getter:
     raise SystemExit('REPAIR TV FAILED: el receptor TV perdió su actualización de estado')
-if tv_getter.count('C&#36;') < 1:
+if 'C&#36;' not in tv_getter:
     raise SystemExit('REPAIR TV FAILED: el receptor TV perdió el formato monetario')
-if '===' in '\n'.join(line for line in current.splitlines() if not line.startswith('  String get tvHtml => ')):
-    raise SystemExit('REPAIR TV FAILED: JavaScript quedó fuera del getter TV')
+
+if '===' in '\n'.join(current.splitlines()[:]):
+    # JavaScript is intentionally embedded only inside the JSON-escaped getter.
+    # A physical Dart line containing the getter is the only legal location for it.
+    for line in current.splitlines():
+        if '===' in line and not re.match(r'^\s*String\s+get\s+tvHtml\s*=>', line):
+            raise SystemExit('REPAIR TV FAILED: JavaScript quedó fuera del getter TV')
 
 if len(re.findall(r'(?m)^\s*Future<void>\s+showTvConnection\s*\(\)\s+async\s*\{', current)) != 1:
     raise SystemExit('REPAIR TV FAILED: showTvConnection no quedó exactamente una vez')
