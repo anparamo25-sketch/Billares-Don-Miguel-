@@ -152,6 +152,16 @@ jobs:
           from pathlib import Path
           content = Path('/tmp/update.json').read_bytes()
           encoded = base64.b64encode(content).decode()
+          current = subprocess.run([
+              'gh', 'api',
+              'repos/anparamo25-sketch/Billares-Don-Miguel-/contents/update.json',
+              '--method', 'GET',
+              '--jq', '.sha',
+          ], text=True, capture_output=True, check=True)
+          current_sha = current.stdout.strip()
+          if not current_sha:
+              raise SystemExit('No se pudo obtener el SHA actual de update.json')
+          print(f'SHA actual de update.json: {current_sha}')
           result = subprocess.run([
               'gh', 'api',
               'repos/anparamo25-sketch/Billares-Don-Miguel-/contents/update.json',
@@ -159,9 +169,10 @@ jobs:
               '--field', 'branch=main',
               '--field', f'message=chore: publish update manifest {os.environ["BUILD_NAME"]}+{os.environ["BUILD_NUMBER"]}',
               '--field', f'content={encoded}',
+              '--field', f'sha={current_sha}',
           ], text=True, capture_output=True)
           if result.returncode == 0:
-              print('Manifesto de actualización publicado correctamente sin modificar el workspace de compilación.')
+              print('Manifesto de actualización publicado correctamente con el SHA actual.')
               raise SystemExit(0)
           print(result.stdout)
           print(result.stderr)
