@@ -17,40 +17,6 @@ def skip_string(source, index):
     raise SystemExit('ADMIN UI FAILED: cadena Dart sin cerrar')
 
 
-def scan_until_statement_end(source, index):
-    depth_paren = 0
-    depth_bracket = 0
-    depth_brace = 0
-    while index < len(source):
-        if source[index] in "'\"":
-            index = skip_string(source, index)
-            continue
-        if source.startswith('//', index):
-            end = source.find('\n', index + 2)
-            index = len(source) if end < 0 else end + 1
-            continue
-        char = source[index]
-        if char == '(':
-            depth_paren += 1
-        elif char == ')':
-            depth_paren -= 1
-        elif char == '[':
-            depth_bracket += 1
-        elif char == ']':
-            depth_bracket -= 1
-        elif char == '{':
-            depth_brace += 1
-        elif char == '}':
-            if depth_brace > 0:
-                depth_brace -= 1
-            elif depth_paren == 0 and depth_bracket == 0:
-                return index
-        elif char == ';' and depth_paren == 0 and depth_bracket == 0 and depth_brace == 0:
-            return index + 1
-        index += 1
-    raise SystemExit('ADMIN UI FAILED: expresión build sin terminar')
-
-
 def brace_end(source, brace):
     depth = 0
     i = brace
@@ -72,34 +38,75 @@ def brace_end(source, brace):
     raise SystemExit('ADMIN UI FAILED: llaves sin cerrar')
 
 
-def class_span(source, class_name):
-    marker = 'class ' + class_name
+def statement_end(source, index):
+    paren = bracket = brace = 0
+    i = index
+    while i < len(source):
+        if source[i] in "'\"":
+            i = skip_string(source, i)
+            continue
+        if source.startswith('//', i):
+            e = source.find('\n', i + 2)
+            i = len(source) if e < 0 else e + 1
+            continue
+        c = source[i]
+        if c == '(':
+            paren += 1
+        elif c == ')':
+            paren -= 1
+        elif c == '[':
+            bracket += 1
+        elif c == ']':
+            bracket -= 1
+        elif c == '{':
+            brace += 1
+        elif c == '}':
+            if brace:
+                brace -= 1
+        elif c == ';' and paren == 0 and bracket == 0 and brace == 0:
+            return i + 1
+        i += 1
+    raise SystemExit('ADMIN UI FAILED: expresión build sin terminar')
+
+
+def class_span(source, name):
+    marker = 'class ' + name
     start = source.find(marker)
     if start < 0:
-        raise SystemExit(f'ADMIN UI FAILED: clase {class_name} ausente')
+        raise SystemExit(f'ADMIN UI FAILED: clase {name} ausente')
     brace = source.find('{', start)
     if brace < 0:
-        raise SystemExit(f'ADMIN UI FAILED: clase {class_name} sin cuerpo')
+        raise SystemExit(f'ADMIN UI FAILED: clase {name} sin cuerpo')
     return start, brace_end(source, brace)
 
 
-def method_span(source, class_start, class_end, name):
+def method_spans(source, class_start, class_end, marker):
     segment = source[class_start:class_end]
-    marker = f'Widget {name}(BuildContext context)'
-    rel = segment.find(marker)
-    if rel < 0:
-        raise SystemExit(f'ADMIN UI FAILED: {name} del administrador ausente')
-    start = class_start + rel
-    brace = source.find('{', start, class_end)
-    arrow = source.find('=>', start, class_end)
-    if brace >= 0 and (arrow < 0 or brace < arrow):
-        return start, brace_end(source, brace)
-    if arrow >= 0:
-        return start, scan_until_statement_end(source, arrow + 2)
-    raise SystemExit(f'ADMIN UI FAILED: {name} debe tener cuerpo Dart válido')
+    positions = []
+    offset = 0
+    while True:
+        rel = segment.find(marker, offset)
+        if rel < 0:
+            break
+        start = class_start + rel
+        brace = source.find('{', start, class_end)
+        arrow = source.find('=>', start, class_end)
+        if brace >= 0 and (arrow < 0 or brace < arrow):
+            end = brace_end(source, brace)
+        elif arrow >= 0:
+            end = statement_end(source, arrow + 2)
+        else:
+            raise SystemExit(f'ADMIN UI FAILED: método {marker} inválido')
+        prefix = source.rfind('@override', class_start, start)
+        line_start = source.rfind('\n', class_start, start) + 1
+        if prefix >= line_start:
+            start = prefix
+        positions.append((start, end))
+        offset = rel + len(marker)
+    return positions
 
 
-ui = r'''  Widget _summaryCard(String label, String value, Color color, IconData icon) {
+SUMMARY = r'''  Widget _summaryCard(String label, String value, Color color, IconData icon) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -124,132 +131,31 @@ ui = r'''  Widget _summaryCard(String label, String value, Color color, IconData
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        final int columns = constraints.maxWidth >= 1200 ? 3 : constraints.maxWidth >= 650 ? 2 : 1;
-        final int available = tableList.where((BillTable t) => t.status == TableStatus.available).length;
-        final int playing = tableList.where((BillTable t) => t.status == TableStatus.playing).length;
-        final int pending = tableList.where((BillTable t) => t.status == TableStatus.pending).length;
-        final Widget home = Padding(
-          padding: EdgeInsets.all(constraints.maxWidth >= 800 ? 22 : 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text('Panel de administración', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
-                        const SizedBox(height: 4),
-                        Text(workdayActive ? 'Jornada abierta • ${clock(workdayOpenedAt ?? DateTime.now())}' : 'Jornada cerrada'),
-                      ],
-                    ),
-                  ),
-                  Flexible(
-                    child: Chip(
-                      avatar: Icon(Icons.wifi, size: 18, color: lanIp != null ? Colors.green : Colors.red),
-                      label: Text(lanIp != null ? 'LAN conectado' : 'LAN no disponible', overflow: TextOverflow.ellipsis),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: <Widget>[
-                  _summaryCard('Disponibles', '$available', Colors.green, Icons.check_circle_outline),
-                  _summaryCard('En juego', '$playing', Colors.red, Icons.sports_esports_outlined),
-                  _summaryCard('Pendientes', '$pending', Colors.amber, Icons.payments_outlined),
-                  _summaryCard('Generado hoy', money(todayTotal), Colors.blue, Icons.attach_money),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: <Widget>[
-                      Chip(
-                        avatar: Icon(Icons.circle, size: 12, color: workdayActive ? Colors.green : Colors.grey),
-                        label: Text(workdayActive ? 'Jornada abierta' : 'Jornada cerrada'),
-                      ),
-                      if (workdayActive) Text('Apertura: ${clock(workdayOpenedAt!)}'),
-                      if (workdayActive) Text('Juegos: $workdayGames'),
-                      if (workdayActive) Text('Generado: ${money(workdayGenerated)}'),
-                      if (!workdayActive && workdayClosedAt != null) Text('Cierre: ${clock(workdayClosedAt!)}'),
-                      if (!workdayActive && workdayClosedAt != null) Text('Efectivo físico: ${money(workdayCashClose)}'),
-                      FilledButton.icon(
-                        onPressed: workdayActive ? closeWorkday : openWorkday,
-                        icon: Icon(workdayActive ? Icons.lock : Icons.lock_open),
-                        label: Text(workdayActive ? 'Cerrar jornada' : 'Abrir jornada'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: <Widget>[
-                  Expanded(child: Text('Mesas', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900))),
-                  const Text('🟢 Libre   🔴 En juego   🟡 Pendiente'),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: GridView.builder(
-                  padding: EdgeInsets.zero,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: columns,
-                    mainAxisExtent: columns == 1 ? 390 : 350,
-                    crossAxisSpacing: 14,
-                    mainAxisSpacing: 14,
-                  ),
-                  itemCount: tableList.length,
-                  itemBuilder: (_, int index) => tableCard(tableList[index]),
-                ),
-              ),
-            ],
-          ),
-        );
-
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('Billares Don Miguel', style: TextStyle(fontWeight: FontWeight.bold)),
-            actions: <Widget>[
-              IconButton(tooltip: 'Pantalla exclusiva para TV', onPressed: showTvConnection, icon: const Icon(Icons.tv)),
-              if (checkingUpdate) const Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))),
-              IconButton(tooltip: 'Buscar actualización', onPressed: checkingUpdate ? null : () => checkForUpdate(showNoUpdate: true), icon: const Icon(Icons.system_update_alt)),
-              IconButton(tooltip: 'Configuración', onPressed: showSettings, icon: const Icon(Icons.settings_outlined)),
-              IconButton(tooltip: 'Cerrar sesión', onPressed: logout, icon: const Icon(Icons.logout)),
-            ],
-          ),
-          body: tab == 0 ? home : tab == 1 ? workdayView() : historyPage(),
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: tab,
-            onDestinationSelected: (int index) => setState(() => tab = index),
-            destinations: const <NavigationDestination>[
-              NavigationDestination(icon: Icon(Icons.table_restaurant), selectedIcon: Icon(Icons.dashboard), label: 'Mesas'),
-              NavigationDestination(icon: Icon(Icons.calendar_today), selectedIcon: Icon(Icons.calendar_today), label: 'Jornada'),
-              NavigationDestination(icon: Icon(Icons.history), selectedIcon: Icon(Icons.history), label: 'Historial'),
-            ],
-          ),
-        );
-      },
-    );
-  }
 '''
 
 source = TARGET.read_text()
 class_start, class_end = class_span(source, '_DashboardPageState')
-start, end = method_span(source, class_start, class_end, 'build')
-source = source[:start] + ui + source[end:]
+
+builds = method_spans(source, class_start, class_end, 'Widget build(BuildContext context)')
+if not builds:
+    raise SystemExit('ADMIN UI FAILED: no existe build() dentro de _DashboardPageState')
+
+# La última build() es la versión administrativa nueva ya generada en la fuente.
+# Se conserva su cuerpo y se eliminan las versiones anteriores para dejar exactamente
+# un build() y un _summaryCard(), haciendo la transformación idempotente.
+_, build_end = builds[-1]
+build_template = source[builds[-1][0]:build_end]
+
+summaries = method_spans(source, class_start, class_end, 'Widget _summaryCard(')
+remove_ranges = builds + summaries
+for start, end in sorted(remove_ranges, reverse=True):
+    source = source[:start] + source[end:]
+    if start < class_end:
+        class_end -= end - start
+
+# Recalcular el cierre real de la clase después de eliminar métodos.
+class_start, class_end = class_span(source, '_DashboardPageState')
+insert_at = class_end - 1
+source = source[:insert_at] + '\n\n' + SUMMARY + build_template + source[insert_at:]
 TARGET.write_text(source)
-print('OK: interfaz administrativa aplicada dentro de _DashboardPageState')
+print('OK: interfaz administrativa normalizada estructuralmente en _DashboardPageState')
