@@ -66,29 +66,15 @@ def top_level_function_spans(source, marker):
 
 
 def repair_app_root(source):
+    # Replace the entire BillaresApp class, not only its build method.
+    # This removes any accidentally injected Dashboard methods from the
+    # application-root class and leaves DashboardPage as the sole owner of
+    # dashboard state/actions.
     class_start, class_end = class_span(source, 'BillaresApp')
-    marker = 'Widget build(BuildContext context)'
-    builds = []
-    offset = class_start
-    while True:
-        start = source.find(marker, offset, class_end)
-        if start < 0:
-            break
-        brace = source.find('{', start, class_end)
-        if brace < 0:
-            break
-        end = brace_end(source, brace)
-        prefix = source.rfind('@override', class_start, start)
-        line_start = source.rfind('\n', class_start, start) + 1
-        if prefix >= line_start:
-            start = prefix
-        builds.append((start, end))
-        offset = end
+    clean_class = '''class BillaresApp extends StatelessWidget {
+  const BillaresApp({super.key});
 
-    if not builds:
-        raise SystemExit('ADMIN UI FAILED: build de BillaresApp ausente')
-
-    clean_build = '''  @override
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -100,14 +86,9 @@ def repair_app_root(source):
       ),
       home: const LoginPage(),
     );
-  }'''
-
-    for start, end in sorted(builds, reverse=True):
-        source = source[:start] + source[end:]
-    class_start, class_end = class_span(source, 'BillaresApp')
-    insert_at = class_end - 1
-    source = source[:insert_at] + '\n' + clean_build + '\n' + source[insert_at:]
-    return source
+  }
+}'''
+    return source[:class_start] + clean_class + source[class_end:]
 
 
 def remove_duplicate_local_ip(source):
@@ -136,11 +117,11 @@ source = TARGET.read_text()
 
 # Structural source correction only:
 # 1) keep exactly one local-IP helper;
-# 2) make BillaresApp the application root;
+# 2) replace the entire BillaresApp class with a clean application root;
 # 3) preserve the real DashboardPage and normalize its existing action labels.
 source = remove_duplicate_local_ip(source)
 source = repair_app_root(source)
 source = preserve_real_dashboard_actions(source)
 
 TARGET.write_text(source)
-print('OK: raíz Dart normalizada; DashboardPage administrativo preservado y acciones reales normalizadas')
+print('OK: BillaresApp reconstruida estructuralmente; DashboardPage preservado y acciones reales normalizadas')
