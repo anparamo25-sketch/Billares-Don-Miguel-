@@ -91,14 +91,14 @@ def replace_dashboard_method(source, name, replacement):
 
 source = TARGET.read_text()
 baseline = subprocess.check_output(['git', 'show', f'{STABLE}:lib/main.dart'], text=True)
-known_good = subprocess.check_output(['git', 'show', f'{KNOWN_GOOD_DASHBOARD}:lib/main.dart'], text=True)
 
-# El archivo actual puede contener transformaciones históricas defectuosas. La raíz y
-# las pantallas de autenticación se conservan desde la base estable; el Dashboard
-# completo se restaura desde la última fuente que ya produjo un APK exitoso.
+# IMPORTANTE: no sustituir DashboardPage ni _DashboardPageState por la versión
+# histórica conocida como buena. Esa sustitución era la causa raíz de que el APK
+# compilara pero siguiera mostrando el panel administrativo antiguo.
+# La interfaz administrativa actual del repositorio debe conservarse y pasar por
+# las transformaciones estructurales posteriores sin ser reemplazada por una clase
+# antigua.
 source = replace_class(source, '_LoginPageState', extract_class(baseline, '_LoginPageState'))
-source = replace_class(source, 'DashboardPage', extract_class(known_good, 'DashboardPage'))
-source = replace_class(source, '_DashboardPageState', extract_class(known_good, '_DashboardPageState'))
 
 source = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.6+126';", source, count=1)
 source = re.sub(r"const String updateManifestUrl = '[^']+';", "const String updateManifestUrl = 'https://github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json';", source, count=1)
@@ -191,4 +191,4 @@ if source.count('onCheckInstallApkPermission') != 1:
 if source.count('onInstallApk(path)') != 1:
     raise SystemExit('1.2.6 FINAL FAILED: instalación OTA duplicada')
 
-print('OK: fuente 1.2.6 reconstruida desde Dashboard conocido y validada estructuralmente')
+print('OK: fuente 1.2.6 reconstruida conservando el Dashboard actual y validada estructuralmente')
