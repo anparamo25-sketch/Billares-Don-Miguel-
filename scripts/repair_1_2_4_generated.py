@@ -3,6 +3,7 @@ import re
 import subprocess
 
 TARGET = Path('lib/main.dart')
+STABLE_COMMIT = '5e5ec88e7f6c12f5c1dae006ad95da4b903f950d'
 
 
 def class_span(source: str, class_name: str):
@@ -50,20 +51,19 @@ def replace_class(source: str, class_name: str, replacement: str) -> str:
 
 current = TARGET.read_text()
 try:
-    baseline = subprocess.check_output(['git', 'show', 'HEAD:lib/main.dart'], text=True)
+    baseline = subprocess.check_output(['git', 'show', f'{STABLE_COMMIT}:lib/main.dart'], text=True)
 except subprocess.CalledProcessError as exc:
-    raise SystemExit(f'No se pudo recuperar el main.dart base: {exc}')
+    raise SystemExit(f'No se pudo recuperar el main.dart estable {STABLE_COMMIT}: {exc}')
 
-# The 1.2.4 generator previously used a broad build() regex. That could hit
-# LoginPage instead of DashboardPage. Restore ONLY LoginPageState from the
-# untouched repository source; all Dashboard/TV/history changes remain intact.
+# The generator previously used a broad build() regex and could corrupt
+# _LoginPageState. Restore ONLY that class from the known-good 1.2.3 build.
 current = replace_class(current, '_LoginPageState', extract_class(baseline, '_LoginPageState'))
 
-# Keep version/update constants from the 1.2.4 generator.
-current = current.replace("const String appVersion = '1.2.1+121';", "const String appVersion = '1.2.4+124';")
-current = current.replace("const String updateManifestUrl = 'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json';", "const String updateManifestUrl = 'https://github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json';")
+# Keep the 1.2.4 version and updater constants.
+current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.4+124';", current, count=1)
+current = re.sub(r"const String updateManifestUrl = '[^']+';", "const String updateManifestUrl = 'https://github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json';", current, count=1)
 
-# Remove duplicate imports if any repair pass is ever repeated.
+# Remove duplicate imports if any repair pass is repeated.
 lines = current.splitlines()
 out = []
 seen = set()
@@ -73,10 +73,9 @@ for line in lines:
             continue
         seen.add(line)
     out.append(line)
-current = '\n'.join(out) + ('\n' if current.endswith('\n') else '')
+current = '\n'.join(out) + '\n'
 
-# Structural preflight: fail here with a precise message instead of allowing
-# malformed class targeting to reach flutter analyze.
+# Structural preflight before Dart formatting/analyzer.
 login = extract_class(current, '_LoginPageState')
 for bad in ('checkingUpdate', 'showSettings', 'logout', 'dashboard()', 'historyPage()'):
     if bad in login:
@@ -90,4 +89,4 @@ if 'Pantalla exclusiva para TV' not in current:
     raise SystemExit('REPAIR PREFLIGHT FAILED: receptor TV ausente')
 
 TARGET.write_text(current)
-print('OK: 1.2.4 generated source repaired and structurally validated')
+print('OK: 1.2.4 generated source repaired using stable 1.2.3 LoginPageState')
