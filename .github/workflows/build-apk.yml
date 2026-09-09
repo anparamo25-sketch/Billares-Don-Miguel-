@@ -65,7 +65,8 @@ jobs:
       - name: Preparar versión 1.2.6
         run: python3 scripts/prepare_1_2_4.py
       - name: Validar productor canónico TV/LAN/mDNS 1.2.6
-        run: python3 -m py_compile scripts/rebuild_tv_1_2_6.py
+        run: |
+          python3 -m py_compile scripts/rebuild_tv_1_2_6.py scripts/repair_1_2_6_generated.py scripts/validate_1_2_6_contract.py
       - name: Reconstruir y validar fuente 1.2.6
         run: python3 scripts/repair_1_2_6_generated.py
       - name: Configurar Android para LAN, actualizaciones, segundo plano y compatibilidad
@@ -107,24 +108,8 @@ jobs:
           grep -q 'REQUEST_INSTALL_PACKAGES' android/app/src/main/AndroidManifest.xml
           grep -q 'FOREGROUND_SERVICE_SPECIAL_USE' android/app/src/main/AndroidManifest.xml
           grep -q 'de.julianassmann.flutter_background.IsolateHolderService' android/app/src/main/AndroidManifest.xml
-      - name: Verificar versión 1.2.6 y TV exclusiva
-        run: |
-          set -euo pipefail
-          grep -q "appVersion = '1.2.6+126'" lib/main.dart
-          grep -q 'github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json' lib/main.dart
-          grep -q 'String get tvHtml =>' lib/main.dart
-          grep -q 'Billares Don Miguel' lib/main.dart
-          grep -q 'billaresdonmiguel.local' lib/main.dart
-          grep -q '/api/state?ts=' lib/main.dart
-          grep -q 'lanPort' lib/main.dart
-          grep -q 'HttpServer.bind(InternetAddress.anyIPv4, 80' lib/main.dart
-          grep -q 'HttpServer.bind(InternetAddress.anyIPv4, 8080' lib/main.dart
-          grep -q 'RawDatagramSocket' lib/main.dart
-          grep -q '224.0.0.251' lib/main.dart
-          grep -q '5353' lib/main.dart
-          grep -q 'workdayActive' lib/main.dart
-          grep -q 'workdayCashClose' lib/main.dart
-          grep -q 'workdayGames' lib/main.dart
+      - name: Verificar contrato funcional 1.2.6
+        run: python3 scripts/validate_1_2_6_contract.py
       - name: Compilar APK release
         run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
       - name: Verificar APK generado
