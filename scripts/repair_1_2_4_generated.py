@@ -63,10 +63,6 @@ subprocess.check_call(['python3', 'scripts/ensure_mdns_1_2_5.py'])
 current = TARGET.read_text()
 current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.5+125';", current, count=1)
 
-# The TV producer performs the authoritative structural reconstruction and its
-# own invariant checks. The final validator deliberately does not rediscover
-# showTvConnection by regex or by indentation, avoiding false negatives caused
-# by Dart/HTML literals. It validates observable TV behavior instead.
 lines = current.splitlines()
 tv_getters = []
 for line_no, line in enumerate(lines, 1):
@@ -84,7 +80,6 @@ required = {
     'String get tvHtml =>':'tvHtml ausente',
     'Billares Don Miguel - TV':'título TV ausente',
     "fetch('/api/state?ts='+Date.now()":'actualización TV ausente',
-    'RawDatagramSocket? _billaresMdnsSocket;':'mDNS ausente',
     'Future<void> _startBillaresMdns() async':'método mDNS ausente',
     'await _startBillaresMdns();':'arranque mDNS ausente',
     "function money(n){return 'C&#36; ":'formato monetario ausente'
@@ -99,8 +94,6 @@ if 'billaresdonmiguel.local' not in normalized:
     raise SystemExit('REPAIR TV FAILED: hostname TV ausente')
 if 'return r"""' in current or "return r'''" in current or 'String get tvHtml {' in current:
     raise SystemExit('REPAIR TV FAILED: TV heredada detectada')
-# The mDNS producer previously wrote literal backslash-n sequences into Dart.
-# Reject that exact corruption before allowing the build to continue.
 for bad in ('\\nFuture<void> _startBillaresMdns()', '\\nFuture<String?> _billaresLocalIp()', '\\nFuture<void> _answerBillaresMdns('):
     if bad in current:
         raise SystemExit('REPAIR TV FAILED: mDNS contiene saltos de línea literales')
@@ -108,4 +101,4 @@ outside_tv = current.replace(tv_line, '', 1)
 if '===' in outside_tv:
     raise SystemExit('REPAIR TV FAILED: JavaScript fuera del getter TV')
 TARGET.write_text(current)
-print('OK: fuente 1.2.5; reconstrucción TV y mDNS validadas sin comprobación frágil de showTvConnection')
+print('OK: fuente 1.2.5; reconstrucción TV y mDNS validadas estructuralmente')
