@@ -56,8 +56,9 @@ if 'Pantalla exclusiva para TV' not in current: raise SystemExit('REPAIR PREFLIG
 
 TARGET.write_text(current)
 subprocess.check_call(['python3', 'scripts/repair_tv_1_2_4.py'])
+subprocess.check_call(['python3', 'scripts/repair_tv_hostname_1_2_5.py'])
 current = TARGET.read_text()
 current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.5+125';", current, count=1)
 current = current.replace('tv_web_receiver_disabled', 'tv_cast').replace('ACTION_CAST_SETTINGS_DISABLED', 'ACTION_CAST_SETTINGS')
 TARGET.write_text(current)
-print('OK: 1.2.5 source repaired with dedicated TV web receiver')
+print('OK: 1.2.5 source repaired with dedicated TV web receiver and fixed hostname')
