@@ -89,4 +89,5 @@ if 'Pantalla exclusiva para TV' not in current:
     raise SystemExit('REPAIR PREFLIGHT FAILED: receptor TV ausente')
 
 TARGET.write_text(current)
-print('OK: 1.2.4 generated source repaired using stable 1.2.3 LoginPageState')
+subprocess.check_call(['python3', 'scripts/repair_tv_1_2_4.py'])
+print('OK: 1.2.4 generated source repaired using stable 1.2.3 LoginPageState and dedicated TV receiver')
