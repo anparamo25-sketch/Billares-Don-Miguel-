@@ -1,0 +1,1 @@
+La validacion de showTvConnection debe reconocer la firma Dart real sin enmascarar toda la fuente.
