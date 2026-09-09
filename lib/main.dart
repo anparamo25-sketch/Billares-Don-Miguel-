@@ -1045,7 +1045,14 @@ Map<String, dynamic> stateMap() => <String, dynamic>{
   }
 
   @override
-    Widget _summaryCard(String label, String value, Color color, IconData icon) {
+    
+
+  @override
+  
+
+
+
+  Widget _summaryCard(String label, String value, Color color, IconData icon) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -1070,8 +1077,7 @@ Map<String, dynamic> stateMap() => <String, dynamic>{
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final int columns = constraints.maxWidth >= 1200 ? 3 : constraints.maxWidth >= 650 ? 2 : 1;
@@ -1190,6 +1196,4 @@ Map<String, dynamic> stateMap() => <String, dynamic>{
         );
       },
     );
-  }
-
-}
+  }}
