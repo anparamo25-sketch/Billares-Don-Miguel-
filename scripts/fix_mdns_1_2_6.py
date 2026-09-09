@@ -18,39 +18,69 @@ def skip_string(source, index):
     raise SystemExit('MDNS 1.2.6 FAILED: cadena Dart sin cerrar')
 
 
-def top_level_function_span(source, name):
-    match = re.search(rf'(?m)^Future<void>\s+{re.escape(name)}\s*\([^)]*\)\s*\{{', source)
-    if not match:
-        raise SystemExit(f'MDNS 1.2.6 FAILED: función {name} ausente')
-    brace = source.find('{', match.start(), match.end())
+def brace_end(source, start):
     depth = 0
-    i = brace
-    while i < len(source):
-        if source[i] in "'\"":
-            i = skip_string(source, i); continue
-        if source.startswith('//', i):
-            e = source.find('\n', i + 2); i = len(source) if e < 0 else e + 1; continue
-        if source[i] == '{': depth += 1
-        elif source[i] == '}':
+    index = start
+    while index < len(source):
+        if source[index] in "'\"":
+            index = skip_string(source, index)
+            continue
+        if source.startswith('//', index):
+            end = source.find('\n', index + 2)
+            index = len(source) if end < 0 else end + 1
+            continue
+        if source[index] == '{':
+            depth += 1
+        elif source[index] == '}':
             depth -= 1
-            if depth == 0: return match.start(), i + 1
-        i += 1
-    raise SystemExit(f'MDNS 1.2.6 FAILED: llaves de {name} sin cerrar')
+            if depth == 0:
+                return index + 1
+        index += 1
+    raise SystemExit('MDNS 1.2.6 FAILED: llaves Dart sin cerrar')
 
 
-def replace_function(source, name, replacement):
-    start, end = top_level_function_span(source, name)
-    return source[:start] + replacement + source[end:]
+def remove_top_level_function(source, name):
+    pattern = re.compile(
+        rf'(?m)^Future<void>\s+{re.escape(name)}\s*\([^)]*\)\s*(?:async\s*)?\{{'
+    )
+    while True:
+        match = pattern.search(source)
+        if not match:
+            return source
+        end = brace_end(source, source.find('{', match.start(), match.end()))
+        source = source[:match.start()] + source[end:]
 
 
-answer = r'''Future<void> _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram) async {
+def remove_socket(source):
+    return re.sub(
+        r'(?m)^RawDatagramSocket\?\s+_billaresMdnsSocket\s*;\s*\n?',
+        '',
+        source,
+    )
+
+
+MDNS_SOURCE = r'''
+RawDatagramSocket? _billaresMdnsSocket;
+Future<String?> _billaresLocalIp() async {
+  try {
+    final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
+    for (final network in interfaces) {
+      for (final address in network.addresses) {
+        final parts = address.address.split('.').map(int.tryParse).whereType<int>().toList();
+        final privateIpv4 = parts.length == 4 && (parts[0] == 10 || (parts[0] == 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] == 192 && parts[1] == 168));
+        if (privateIpv4 && !address.isLoopback && !address.isLinkLocal && !address.isMulticast) return address.address;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+Future<void> _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram) async {
   try {
     final List<int> query = datagram.data;
     if (query.length < 12) return;
     final int questions = (query[4] << 8) | query[5];
     var offset = 12;
-    String? matchedName;
-    int? matchedType;
+    var matched = false;
     for (var i = 0; i < questions; i++) {
       final labels = <String>[];
       while (offset < query.length) {
@@ -63,20 +93,17 @@ answer = r'''Future<void> _answerBillaresMdns(RawDatagramSocket socket, Datagram
       if (offset + 4 > query.length) return;
       final int type = (query[offset] << 8) | query[offset + 1];
       offset += 4;
-      if (labels.join('.').toLowerCase() == 'billaresdonmiguel.local' && (type == 1 || type == 255)) {
-        matchedName = 'billaresdonmiguel.local';
-        matchedType = type;
-      }
+      if (labels.join('.').toLowerCase() == 'billaresdonmiguel.local' && (type == 1 || type == 255)) matched = true;
     }
-    if (matchedName == null || matchedType == null) return;
+    if (!matched) return;
     final String? ip = await _billaresLocalIp();
     if (ip == null) return;
     final List<int> octets = ip.split('.').map(int.parse).toList();
     if (octets.length != 4) return;
 
-    // DNS header: transaction ID, response flags 0x8400, QDCOUNT=0,
-    // ANCOUNT=1, NSCOUNT=0, ARCOUNT=0. The previous implementation
-    // incorrectly wrote TTL/RDLENGTH into the header, producing an invalid packet.
+    // Valid DNS/mDNS header: flags=0x8400, QDCOUNT=0, ANCOUNT=1,
+    // NSCOUNT=0, ARCOUNT=0. The old implementation put TTL/RDLENGTH
+    // into the header and produced an invalid DNS packet.
     final response = <int>[];
     response.addAll(query.sublist(0, 2));
     response.addAll(<int>[0x84, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
@@ -85,22 +112,30 @@ answer = r'''Future<void> _answerBillaresMdns(RawDatagramSocket socket, Datagram
     response.addAll(<int>[0x00, 0x00, 0x00, 0x78]);
     response.addAll(<int>[0x00, 0x04]);
     response.addAll(octets);
-    socket.send(response, datagram.address, datagram.port);
+    socket.send(response, InternetAddress('224.0.0.251'), 5353);
+    if (datagram.address.address != '224.0.0.251' || datagram.port != 5353) {
+      socket.send(response, datagram.address, datagram.port);
+    }
   } catch (_) {}
 }
-'''
-
-start_mdns = r'''Future<void> _startBillaresMdns() async {
+Future<void> _startBillaresMdns() async {
   try {
     _billaresMdnsSocket?.close();
-    final RawDatagramSocket socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 5353, reuseAddress: true, reusePort: true);
+    final RawDatagramSocket socket = await RawDatagramSocket.bind(
+      InternetAddress.anyIPv4,
+      5353,
+      reuseAddress: true,
+      reusePort: true,
+    );
     _billaresMdnsSocket = socket;
     socket.broadcastEnabled = true;
     socket.joinMulticast(InternetAddress('224.0.0.251'));
     socket.listen((RawSocketEvent event) {
       if (event != RawSocketEvent.read) return;
       final Datagram? datagram = socket.receive();
-      if (datagram != null) _answerBillaresMdns(socket, datagram);
+      if (datagram != null) {
+        _answerBillaresMdns(socket, datagram);
+      }
     });
     try {
       await const MethodChannel('billaresdonmiguel/network').invokeMethod<void>('acquireMulticastLock');
@@ -110,7 +145,16 @@ start_mdns = r'''Future<void> _startBillaresMdns() async {
 '''
 
 source = TARGET.read_text()
-source = replace_function(source, '_answerBillaresMdns', answer)
-source = replace_function(source, '_startBillaresMdns', start_mdns)
+# Remove every generated copy before inserting one canonical implementation.
+source = remove_top_level_function(source, '_answerBillaresMdns')
+source = remove_top_level_function(source, '_startBillaresMdns')
+source = remove_top_level_function(source, '_billaresLocalIp')
+source = remove_socket(source)
+
+first_class = re.search(r'(?m)^class\s+[A-Za-z_][A-Za-z0-9_]*', source)
+if not first_class:
+    raise SystemExit('MDNS 1.2.6 FAILED: no se encontró una clase Dart donde insertar mDNS')
+
+source = source[:first_class.start()] + MDNS_SOURCE.lstrip() + '\n' + source[first_class.start():]
 TARGET.write_text(source)
-print('OK: mDNS 1.2.6 corregido con paquete DNS válido y multicast lock')
+print('OK: mDNS 1.2.6 corregido estructuralmente; implementación canónica insertada una sola vez')
