@@ -7,4 +7,21 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.byType(LoginPage), findsOneWidget);
   });
+
+  test('Las cinco tarifas de 1.2.6 permanecen bloqueadas con los valores acordados', () {
+    expect(tableRates[1], 120);
+    expect(tableRates[2], 120);
+    expect(tableRates[3], 100);
+    expect(tableRates[4], 100);
+    expect(tableRates[5], 70);
+    expect(appVersion, '1.2.6+126');
+  });
+
+  test('Los estados funcionales de una mesa existen sin arquitectura de dispositivos por mesa', () {
+    expect(TableStatus.values, containsAll(<TableStatus>[
+      TableStatus.available,
+      TableStatus.playing,
+      TableStatus.pending,
+    ]));
+  });
 }
