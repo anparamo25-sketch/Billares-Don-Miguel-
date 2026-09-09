@@ -61,7 +61,14 @@ jobs:
       - name: Generar plataforma Android limpia
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
       - name: Preparar versión 1.2.6
-        run: python3 scripts/prepare_1_2_4.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s lib/main.dart
+          grep -q "const String appVersion = '1.2.6+126';" lib/main.dart
+          grep -q "const Map<int, double> tableRates" lib/main.dart
+          grep -q "billaresdonmiguel.local" lib/main.dart
+          echo "Fuente base 1.2.6+126 verificada; se elimina la dependencia del preparador histórico 1.2.4."
       - name: Validar scripts 1.2.6
         run: python3 -m py_compile scripts/rebuild_tv_1_2_6.py scripts/repair_1_2_6_generated.py scripts/validate_1_2_6_contract.py scripts/enforce_1_2_6_source.py
       - name: Reconstruir TV, LAN y mDNS 1.2.6
@@ -145,12 +152,11 @@ jobs:
           from pathlib import Path
           content = Path('/tmp/update.json').read_bytes()
           encoded = base64.b64encode(content).decode()
-          payload = json.dumps({"message": f"chore: publish update manifest {os.environ['BUILD_NAME']}+{os.environ['BUILD_NUMBER']}", "content": encoded})
           result = subprocess.run([
               'gh', 'api',
               'repos/anparamo25-sketch/Billares-Don-Miguel-/contents/update.json',
               '--method', 'PUT',
-              '--field', f'branch=main',
+              '--field', 'branch=main',
               '--field', f'message=chore: publish update manifest {os.environ["BUILD_NAME"]}+{os.environ["BUILD_NUMBER"]}',
               '--field', f'content={encoded}',
           ], text=True, capture_output=True)
