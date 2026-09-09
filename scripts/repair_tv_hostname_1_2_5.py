@@ -4,36 +4,28 @@ import re
 TARGET = Path('lib/main.dart')
 s = TARGET.read_text()
 
-# URL fija para el televisor: el teléfono anuncia billaresdonmiguel.local mediante mDNS.
 s = s.replace("final String url = 'http://$lanIp:8080/tv';", "final String url = 'http://billaresdonmiguel.local/tv';")
-s = s.replace("const Text('Dirección del receptor:', style: TextStyle(fontWeight: FontWeight.bold)),", "const Text('Dirección del receptor:', style: TextStyle(fontWeight: FontWeight.bold)),")
 s = s.replace("const Text('En la TV: abre su navegador y escribe exactamente la dirección anterior. El celular puede seguir usando CENTRAL normalmente.', style: TextStyle(fontSize: 12)),", "const Text('En la TV: escribe exactamente http://billaresdonmiguel.local/tv. No necesitas código ni IP. El celular puede seguir usando CENTRAL normalmente.', style: TextStyle(fontSize: 12)),")
 
-# Add an mDNS responder field next to the existing HTTP server field.
 if 'RawDatagramSocket? _billaresMdnsSocket;' not in s:
-    marker = re.search(r'(\n\s*HttpServer\?\s+server\s*;)', s)
-    if not marker:
-        marker = re.search(r'(\n\s*HttpServer\s+server\s*;)', s)
+    marker = re.search(r'(\n\s*HttpServer\?\s+server\s*;)', s) or re.search(r'(\n\s*HttpServer\s+server\s*;)', s)
     if not marker:
         raise SystemExit('No se encontró la declaración de HttpServer')
     s = s[:marker.end()] + "\n  RawDatagramSocket? _billaresMdnsSocket;" + s[marker.end():]
 
-# Bind the web receiver on port 80 so the TV can omit :8080.
 old_bind = "server = await HttpServer.bind(InternetAddress.anyIPv4, 8080, shared: true);"
 new_bind = "server = await HttpServer.bind(InternetAddress.anyIPv4, 80, shared: true);"
-if old_bind not in s:
-    raise SystemExit('No se encontró el bind HTTP 8080')
-s = s.replace(old_bind, new_bind, 1)
+if old_bind in s:
+    s = s.replace(old_bind, new_bind, 1)
+elif "HttpServer.bind(InternetAddress.anyIPv4, 80, shared: true)" not in s:
+    raise SystemExit('No se encontró el bind HTTP esperado')
 
-# Start the fixed local hostname responder after the HTTP server starts.
 needle = "server!.listen(handleRequest, onError: (_) {});\n      if (mounted) setState(() {});"
 replacement = "server!.listen(handleRequest, onError: (_) {});\n      await _startBillaresMdns();\n      if (mounted) setState(() {});"
-if needle not in s:
-    raise SystemExit('No se encontró el punto de inicio del servidor LAN')
-s = s.replace(needle, replacement, 1)
+if needle in s:
+    s = s.replace(needle, replacement, 1)
 
-# Insert the mDNS responder immediately before startLanServer.
-if '_startBillaresMdns()' not in s:
+if 'Future<void> _startBillaresMdns() async {' not in s:
     method = r'''  Future<void> _startBillaresMdns() async {
     try {
       _billaresMdnsSocket?.close();
@@ -53,7 +45,7 @@ if '_startBillaresMdns()' not in s:
         _answerBillaresMdns(socket, datagram);
       });
     } catch (_) {
-      // El receptor IP continúa funcionando aunque el mDNS no esté disponible.
+      // La pantalla por IP sigue siendo posible si mDNS no está disponible.
     }
   }
 
@@ -76,7 +68,7 @@ if '_startBillaresMdns()' not in s:
         if (offset + 4 > q.length) return;
         final int type = (q[offset] << 8) | q[offset + 1];
         offset += 2;
-        offset += 2; // class
+        offset += 2;
         final String name = labels.join('.').toLowerCase();
         if (name == 'billaresdonmiguel.local' && (type == 1 || type == 255)) matched = true;
       }
@@ -100,11 +92,8 @@ if '_startBillaresMdns()' not in s:
         raise SystemExit('No se encontró startLanServer para insertar mDNS')
     s = s.replace(marker, method + marker, 1)
 
-# Close mDNS when the HTTP server is closed, if the generated source has a direct close.
-s = s.replace('server?.close(force: true);', 'server?.close(force: true);\n      _billaresMdnsSocket?.close();', 1)
-
-# Ensure the user-facing dialog never tells the user to enter a code.
-s = s.replace('No necesitas código ni IP.', 'No necesitas código ni IP.')
+if 'server?.close(force: true);' in s and '_billaresMdnsSocket?.close();' not in s:
+    s = s.replace('server?.close(force: true);', 'server?.close(force: true);\n      _billaresMdnsSocket?.close();', 1)
 
 TARGET.write_text(s)
 print('OK: hostname fijo billaresdonmiguel.local + mDNS + HTTP puerto 80')
