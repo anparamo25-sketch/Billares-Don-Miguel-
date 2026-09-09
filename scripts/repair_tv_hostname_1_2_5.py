@@ -1,18 +1,16 @@
 from pathlib import Path
 import re
-import subprocess
 
 TARGET = Path('lib/main.dart')
 source = TARGET.read_text()
 
-# Este paso ya no modifica el servidor ni aplica reemplazos de texto.
-# La dirección del receptor forma parte de la reconstrucción canónica de TV y
-# el servidor LAN/mDNS se reconstruye de forma estructural en ensure_mdns_1_2_5.py.
+# Validador puro. El hostname y el servidor ya fueron construidos por el
+# productor canónico; este paso jamás vuelve a tocar el código.
 if 'http://billaresdonmiguel.local/tv' not in source:
-    raise SystemExit('TV HOSTNAME FAILED: la reconstrucción TV no contiene el receptor billaresdonmiguel.local/tv')
-
+    raise SystemExit('TV HOSTNAME FAILED: receptor TV canónico ausente')
 if not re.search(r'\bFuture\s*<\s*void\s*>\s+startLanServer\s*\(\s*\)\s+async\s*\{', source):
-    raise SystemExit('TV HOSTNAME FAILED: la fuente no contiene la función estructural startLanServer')
+    raise SystemExit('TV HOSTNAME FAILED: servidor LAN canónico ausente')
+if 'HttpServer.bind(InternetAddress.anyIPv4, 80' not in re.sub(r'\s+', ' ', source):
+    raise SystemExit('TV HOSTNAME FAILED: servidor LAN no usa puerto 80')
 
-subprocess.check_call(['python3', 'scripts/repair_tv_final_safety.py'])
-print('OK: hostname TV validado; este paso no aplica parches al servidor')
+print('OK: hostname y servidor LAN validados; sin modificaciones')
