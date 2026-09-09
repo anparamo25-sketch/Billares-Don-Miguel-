@@ -66,6 +66,16 @@ def remove_method(s, name):
         s = s[:match.start()] + s[brace_end(s, start):]
 
 
+def remove_function(s, name):
+    pattern = re.compile(rf'(?m)^\s*(?:Future\s*<[^\n{{]+>|void|String\??)\s+{re.escape(name)}\s*\([^)]*\)\s*(?:async\s*)?\{{')
+    while True:
+        match = pattern.search(s)
+        if not match:
+            return s
+        start = s.find('{', match.start(), match.end())
+        s = s[:match.start()] + s[brace_end(s, start):]
+
+
 def remove_getter(s, name):
     pattern = re.compile(rf'(?m)^\s*String\s+get\s+{re.escape(name)}\s*(?:=>|\{{)')
     while True:
@@ -136,6 +146,13 @@ for name in ('tvHtml', 'tvHtmlLegacy1', 'tvHtmlLegacy2', 'tvHtmlLegacy3'):
     class_source = remove_getter(class_source, name)
 class_source = re.sub(r'(?m)^\s*HttpServer\?\s+server\s*;\s*\n?', '', class_source)
 class_source = re.sub(r'(?m)^\s*String\?\s+lanIp\s*;\s*\n?', '', class_source)
+source = source[:class_start] + class_source + source[class_end:]
+
+# El productor es idempotente: elimina cualquier implementación mDNS anterior
+# antes de insertar exactamente una implementación canónica nueva.
+for name in ('_billaresLocalIp', '_answerBillaresMdns', '_startBillaresMdns'):
+    source = remove_function(source, name)
+source = re.sub(r'(?m)^\s*RawDatagramSocket\?\s+_billaresMdnsSocket\s*;\s*\n?', '', source)
 
 mdns = """
 RawDatagramSocket? _billaresMdnsSocket;
@@ -239,4 +256,4 @@ class_source = class_source[:state.start()] + members + getter + class_source[st
 source = source[:class_start] + class_source + source[class_end:]
 source = escape_plain_dollars(source)
 TARGET.write_text(source)
-print('OK: productor TV/LAN/mDNS reconstruido de forma determinista')
+print('OK: productor TV/LAN/mDNS reconstruido de forma determinista e idempotente')
