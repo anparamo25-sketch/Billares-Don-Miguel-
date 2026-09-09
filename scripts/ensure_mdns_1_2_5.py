@@ -88,6 +88,35 @@ def matching_brace(source: str, open_pos: int) -> int:
     raise SystemExit('mDNS ENSURE FAILED: llaves Dart sin cerrar')
 
 
+def matching_paren(source: str, open_pos: int) -> int:
+    depth = 0
+    quote = None
+    triple = False
+    i = open_pos
+    while i < len(source):
+        if quote:
+            token = quote * 3 if triple else quote
+            if source.startswith(token, i):
+                i += len(token); quote = None; triple = False; continue
+            if source[i] == '\\' and not triple:
+                i += 2; continue
+            i += 1; continue
+        if source.startswith("'''", i): quote, triple = "'", True; i += 3; continue
+        if source.startswith('"""', i): quote, triple = '"', True; i += 3; continue
+        if source[i] in ("'", '"'): quote, triple = source[i], False; i += 1; continue
+        if source.startswith('//', i):
+            end = source.find('\n', i + 2); i = len(source) if end < 0 else end + 1; continue
+        if source.startswith('/*', i):
+            end = source.find('*/', i + 2); i = len(source) if end < 0 else end + 2; continue
+        if source[i] == '(':
+            depth += 1
+        elif source[i] == ')':
+            depth -= 1
+            if depth == 0: return i
+        i += 1
+    raise SystemExit('mDNS ENSURE FAILED: paréntesis Dart sin cerrar')
+
+
 def class_spans(source: str):
     spans = []
     for m in re.finditer(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*\b[^\{]*\{', source):
@@ -114,57 +143,80 @@ def remove_method(source: str, pattern: re.Pattern) -> str:
 
 s = TARGET.read_text()
 
-# The generated source may rename the dashboard class or server field. Locate
-# the actual class structurally: it must contain an HTTP bind and a listener
-# whose callback is handleRequest. No historical class/method name is required.
-own = None
+# Find the real HTTP server by its actual bind call. We intentionally do not
+# depend on any generated dashboard class or on a particular server variable
+# or listener formatting.
+bind_match = re.search(r'HttpServer\.bind\s*\(', s)
+if not bind_match:
+    raise SystemExit('mDNS ENSURE FAILED: no se encontró HttpServer.bind del receptor TV')
+
+# Locate the class containing that real bind call.
+owner = None
 for a, b, text in class_spans(s):
-    if 'HttpServer.bind' in text and re.search(r'\.listen\s*\(\s*handleRequest\b', text):
-        own = (a, b, text)
+    if a <= bind_match.start() < b:
+        owner = (a, b, text)
         break
-if own is None:
-    raise SystemExit('mDNS ENSURE FAILED: no se encontró el servidor HTTP del receptor TV')
+if owner is None:
+    raise SystemExit('mDNS ENSURE FAILED: no se encontró la clase que contiene el servidor HTTP')
 
-class_start, class_end, owner_text = own
+class_start, class_end, owner_text = owner
 
-if FIELD.strip() not in owner_text:
-    insert_at = s.find('{', class_start, class_end) + 1
-    s = s[:insert_at] + '\n' + FIELD + s[insert_at:]
-
-# Remove old generated copies, then recalculate the owner.
+# Clean every generated copy before inserting one canonical implementation.
 s = remove_method(s, re.compile(r'(?m)^\s*Future<void>\s+_startBillaresMdns\s*\(\)\s+async\s*\{'))
 s = remove_method(s, re.compile(r'(?m)^\s*void\s+_answerBillaresMdns\s*\(RawDatagramSocket\s+socket,\s*Datagram\s+datagram\)\s*\{'))
+s = re.sub(r'(?m)^\s*RawDatagramSocket\?\s+_billaresMdnsSocket;\s*\n?', '', s)
 
+# Recompute the HTTP bind and owning class after cleanup.
+bind_match = re.search(r'HttpServer\.bind\s*\(', s)
+if not bind_match:
+    raise SystemExit('mDNS ENSURE FAILED: servidor HTTP desapareció al limpiar')
 for a, b, text in class_spans(s):
-    if 'HttpServer.bind' in text and re.search(r'\.listen\s*\(\s*handleRequest\b', text):
+    if a <= bind_match.start() < b:
         class_start, class_end, owner_text = a, b, text
         break
 else:
-    raise SystemExit('mDNS ENSURE FAILED: servidor HTTP ausente después de limpiar mDNS')
+    raise SystemExit('mDNS ENSURE FAILED: clase del servidor HTTP no encontrada')
 
-# Re-add exactly one copy immediately before the end of the real server class.
+# Insert the field immediately inside the real server class.
+insert_at = s.find('{', class_start, class_end) + 1
+s = s[:insert_at] + '\n' + FIELD + s[insert_at:]
+
+# Recompute class span and insert canonical mDNS methods before its closing brace.
+for a, b, text in class_spans(s):
+    if a <= bind_match.start() < b:
+        class_start, class_end, owner_text = a, b, text
+        break
 absolute = class_end - 1
 s = s[:absolute] + '\n' + METHODS + s[absolute:]
 
-# Recalculate owner and attach startup exactly once after the real HTTP listener.
-for a, b, text in class_spans(s):
-    if 'HttpServer.bind' in text and re.search(r'\.listen\s*\(\s*handleRequest\b', text):
-        class_start, class_end, owner_text = a, b, text
-        break
-else:
-    raise SystemExit('mDNS ENSURE FAILED: listener HTTP ausente al finalizar')
+# Recompute the bind and its class one final time. Start mDNS immediately after
+# the complete HttpServer.bind(...) expression; this does not depend on whether
+# the HTTP listener is written as server.listen, await server.listen, or split
+# across multiple lines.
+bind_match = re.search(r'HttpServer\.bind\s*\(', s)
+if not bind_match:
+    raise SystemExit('mDNS ENSURE FAILED: HttpServer.bind no reconocido al finalizar')
+open_paren = s.find('(', bind_match.start())
+close_paren = matching_paren(s, open_paren)
+semicolon = s.find(';', close_paren)
+if semicolon < 0:
+    raise SystemExit('mDNS ENSURE FAILED: final de HttpServer.bind no encontrado')
 
-owner_text = re.sub(r'\n\s*await\s+_startBillaresMdns\(\);', '', owner_text)
-listener = re.search(r'\.listen\s*\(\s*handleRequest\b[^;]*\);', owner_text)
-if not listener:
-    raise SystemExit('mDNS ENSURE FAILED: listener HTTP no reconocido')
-pos = listener.end()
-owner_text = owner_text[:pos] + '\n      await _startBillaresMdns();' + owner_text[pos:]
-s = s[:class_start] + owner_text + s[class_end:]
+# Remove any existing startup invocation, then add exactly one after the bind.
+s = re.sub(r'(?m)^\s*await\s+_startBillaresMdns\(\);\s*\n?', '', s)
+# The cleanup above may shift positions, so find bind again.
+bind_match = re.search(r'HttpServer\.bind\s*\(', s)
+open_paren = s.find('(', bind_match.start())
+close_paren = matching_paren(s, open_paren)
+semicolon = s.find(';', close_paren)
+if semicolon < 0:
+    raise SystemExit('mDNS ENSURE FAILED: final de HttpServer.bind no encontrado')
+s = s[:semicolon + 1] + '\n      await _startBillaresMdns();' + s[semicolon + 1:]
 
-# Semantic validation. Do not require exact whitespace or a historical class name.
+# Semantic validation inside the actual server class.
+bind_match = re.search(r'HttpServer\.bind\s*\(', s)
 for a, b, text in class_spans(s):
-    if 'HttpServer.bind' in text and re.search(r'\.listen\s*\(\s*handleRequest\b', text):
+    if a <= bind_match.start() < b:
         owner_text = text
         break
 else:
@@ -194,4 +246,4 @@ if owner_text.count('await _startBillaresMdns();') != 1:
     raise SystemExit('mDNS ENSURE FAILED: arranque mDNS duplicado')
 
 TARGET.write_text(s)
-print('OK: mDNS instalado por estructura real del servidor HTTP, sin depender de nombres históricos')
+print('OK: mDNS alineado al HttpServer.bind real, sin nombres históricos ni parches de texto frágiles')
