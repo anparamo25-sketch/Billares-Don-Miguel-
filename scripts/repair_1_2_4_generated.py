@@ -6,7 +6,7 @@ import py_compile
 TARGET = Path('lib/main.dart')
 STABLE_COMMIT = '5e5ec88e7f6c12f5c1dae006ad95da4b903f950d'
 
-for script in ('scripts/prepare_1_2_4.py', 'scripts/repair_1_2_4_generated.py', 'scripts/repair_tv_1_2_4.py', 'scripts/repair_tv_hostname_1_2_5.py'):
+for script in ('scripts/prepare_1_2_4.py', 'scripts/repair_1_2_4_generated.py', 'scripts/repair_tv_1_2_4.py', 'scripts/repair_tv_hostname_1_2_5.py', 'scripts/repair_tv_final_safety.py'):
     try:
         py_compile.compile(script, doraise=True)
     except py_compile.PyCompileError as exc:
@@ -78,22 +78,27 @@ current = TARGET.read_text()
 current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.5+125';", current, count=1)
 current = current.replace('tv_web_receiver_disabled', 'tv_cast').replace('ACTION_CAST_SETTINGS_DISABLED', 'ACTION_CAST_SETTINGS')
 
-hostname_source = Path('scripts/repair_tv_hostname_1_2_5.py').read_text()
+# Validaciones semánticas, independientes de espacios, saltos de línea o estilo.
+normalized = re.sub(r'\s+', ' ', current)
 required = {
     'String get tvHtml =>': 'tvHtml ausente',
     'Billares Don Miguel - TV': 'título TV ausente',
     "fetch('/api/state?ts='+Date.now()": 'actualización TV ausente',
-    'HttpServer.bind(InternetAddress.anyIPv4, 80, shared: true)': 'servidor HTTP puerto 80 ausente',
     'RawDatagramSocket? _billaresMdnsSocket;': 'mDNS ausente',
     "function money(n){return 'C&#36; '": 'formato monetario TV ausente',
 }
 for marker, message in required.items():
-    if marker not in current: raise SystemExit(f'REPAIR TV FAILED: {message}')
-if 'billaresdonmiguel.local' not in current and 'billaresdonmiguel.local' not in hostname_source:
-    raise SystemExit('REPAIR TV FAILED: hostname TV ausente en servidor/dialogo y script de reparación')
+    if marker not in normalized: raise SystemExit(f'REPAIR TV FAILED: {message}')
 
-# Deterministic structural checks: never inspect HTML with a regex that can stop
-# at JavaScript semicolons. The getter must be exactly one physical Dart line.
+binds = re.findall(r'HttpServer\.bind\s*\(\s*InternetAddress\.anyIPv4\s*,\s*([^,\)]+)', normalized)
+if not binds:
+    raise SystemExit('REPAIR TV FAILED: no se encontró HttpServer.bind para el receptor TV')
+if not any(arg.strip() == '80' for arg in binds):
+    raise SystemExit(f'REPAIR TV FAILED: HttpServer.bind encontrado pero ningún puerto 80: {binds}')
+if 'billaresdonmiguel.local' not in normalized:
+    raise SystemExit('REPAIR TV FAILED: hostname TV ausente')
+
+# El getter debe ser exactamente una línea física y el HTML no puede escaparse del string.
 tv_getter_lines = [line for line in current.splitlines() if line.startswith('  String get tvHtml => ')]
 if len(tv_getter_lines) != 1:
     raise SystemExit(f'REPAIR TV FAILED: tvHtml quedó {len(tv_getter_lines)} veces')
@@ -119,4 +124,4 @@ if 'String get tvHtml {' in current:
     raise SystemExit('REPAIR TV FAILED: quedó getter tvHtml con bloque Dart antiguo')
 
 TARGET.write_text(current)
-print('OK: fuente 1.2.5 final; TV validada estructuralmente, hostname validado y sin HTML heredado')
+print('OK: fuente 1.2.5 final; TV validada estructural y semánticamente, sin depender del formato del bind')
