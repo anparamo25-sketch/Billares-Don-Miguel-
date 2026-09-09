@@ -26,9 +26,18 @@ for name, marker in REQUIRED.items():
     if marker not in SOURCE and marker not in NORMALIZED:
         raise SystemExit(f'1.2.6 CONTRACT FAILED: falta {name}: {marker}')
 
-# Tarifas fijas: se acepta tanto const Map como Map, pero los cinco valores deben coincidir exactamente.
-rate_pattern = r'(?:const\s+)?Map\s*<\s*int\s*,\s*double\s*>\s+tableRates\s*=\s*<\s*int\s*,\s*double\s*>\s*\{\s*1\s*:\s*120\s*,\s*2\s*:\s*120\s*,\s*3\s*:\s*100\s*,\s*4\s*:\s*100\s*,\s*5\s*:\s*70\s*\}'
-if not re.search(rate_pattern, NORMALIZED):
+# Tarifas fijas: validar el contenido semántico de tableRates sin depender de
+# cómo Dart formatee la declaración de tipos/genéricos.
+rate_decl = re.search(
+    r'(?s)(?:const\s+)?(?:Map\s*<\s*int\s*,\s*double\s*>\s+)?tableRates\s*=\s*\{([^}]*)\}',
+    SOURCE,
+)
+if not rate_decl:
+    raise SystemExit('1.2.6 CONTRACT FAILED: tarifas fijas incorrectas o ausentes')
+
+rate_body = re.sub(r'\s+', '', rate_decl.group(1))
+expected_rates = '1:120,2:120,3:100,4:100,5:70'
+if rate_body != expected_rates:
     raise SystemExit('1.2.6 CONTRACT FAILED: tarifas fijas incorrectas o ausentes')
 
 # Los puertos se validan semánticamente para no depender del formato que aplica dart format.
