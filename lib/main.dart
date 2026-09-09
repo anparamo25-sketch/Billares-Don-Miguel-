@@ -16,6 +16,21 @@ const Map<int, double> tableRates = <int, double>{1: 120, 2: 120, 3: 100, 4: 100
 
 enum TableStatus { available, playing, pending }
 
+Future<String?> _billaresLocalIp() async {
+  try {
+    final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
+    for (final network in interfaces) {
+      for (final address in network.addresses) {
+        final parts = address.address.split('.').map(int.tryParse).whereType<int>().toList();
+        final privateIpv4 = parts.length == 4 && (parts[0] == 10 || (parts[0] == 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] == 192 && parts[1] == 168));
+        if (privateIpv4 && !address.isLoopback && !address.isLinkLocal && !address.isMulticast) return address.address;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+
 RawDatagramSocket? _billaresMdnsSocket;
 Future<String?> _billaresLocalIp() async {
   try {
@@ -32,51 +47,73 @@ Future<String?> _billaresLocalIp() async {
 }
 Future<void> _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram) async {
   try {
-    final query = datagram.data;
+    final List<int> query = datagram.data;
     if (query.length < 12) return;
-    final questions = (query[4] << 8) | query[5];
+    final int questions = (query[4] << 8) | query[5];
     var offset = 12;
-    var match = false;
+    var matched = false;
     for (var i = 0; i < questions; i++) {
       final labels = <String>[];
       while (offset < query.length) {
-        final length = query[offset++];
+        final int length = query[offset++];
         if (length == 0) break;
         if (length > 63 || offset + length > query.length) return;
         labels.add(String.fromCharCodes(query.sublist(offset, offset + length)));
         offset += length;
       }
       if (offset + 4 > query.length) return;
-      final type = (query[offset] << 8) | query[offset + 1];
+      final int type = (query[offset] << 8) | query[offset + 1];
       offset += 4;
-      if (labels.join('.').toLowerCase() == 'billaresdonmiguel.local' && (type == 1 || type == 255)) match = true;
+      if (labels.join('.').toLowerCase() == 'billaresdonmiguel.local' && (type == 1 || type == 255)) matched = true;
     }
-    if (!match) return;
-    final ip = await _billaresLocalIp();
+    if (!matched) return;
+    final String? ip = await _billaresLocalIp();
     if (ip == null) return;
-    final octets = ip.split('.').map(int.parse).toList();
+    final List<int> octets = ip.split('.').map(int.parse).toList();
+    if (octets.length != 4) return;
+
+    // Valid DNS/mDNS header: flags=0x8400, QDCOUNT=0, ANCOUNT=1,
+    // NSCOUNT=0, ARCOUNT=0. The old implementation put TTL/RDLENGTH
+    // into the header and produced an invalid DNS packet.
     final response = <int>[];
     response.addAll(query.sublist(0, 2));
-    response.addAll(<int>[0x84, 0, 0, 0, 0, 1, 0, 0, 0, 120, 0, 4]);
-    response.addAll(query.sublist(12, offset));
-    response.addAll(<int>[0xC0, 0x0C, 0, 1, 0, 1, 0, 0, 0, 120, 0, 4]);
+    response.addAll(<int>[0x84, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+    response.addAll(<int>[0xC0, 0x0C]);
+    response.addAll(<int>[0x00, 0x01, 0x00, 0x01]);
+    response.addAll(<int>[0x00, 0x00, 0x00, 0x78]);
+    response.addAll(<int>[0x00, 0x04]);
     response.addAll(octets);
-    socket.send(response, datagram.address, datagram.port);
+    socket.send(response, InternetAddress('224.0.0.251'), 5353);
+    if (datagram.address.address != '224.0.0.251' || datagram.port != 5353) {
+      socket.send(response, datagram.address, datagram.port);
+    }
   } catch (_) {}
 }
 Future<void> _startBillaresMdns() async {
   try {
     _billaresMdnsSocket?.close();
-    final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 5353, reuseAddress: true, reusePort: true);
+    final RawDatagramSocket socket = await RawDatagramSocket.bind(
+      InternetAddress.anyIPv4,
+      5353,
+      reuseAddress: true,
+      reusePort: true,
+    );
     _billaresMdnsSocket = socket;
+    socket.broadcastEnabled = true;
     socket.joinMulticast(InternetAddress('224.0.0.251'));
-    socket.listen((event) {
+    socket.listen((RawSocketEvent event) {
       if (event != RawSocketEvent.read) return;
-      final datagram = socket.receive();
-      if (datagram != null) _answerBillaresMdns(socket, datagram);
+      final Datagram? datagram = socket.receive();
+      if (datagram != null) {
+        _answerBillaresMdns(socket, datagram);
+      }
     });
+    try {
+      await const MethodChannel('billaresdonmiguel/network').invokeMethod<void>('acquireMulticastLock');
+    } catch (_) {}
   } catch (_) {}
 }
+
 class BillTable {
   BillTable(this.number, this.rate);
   final int number;
@@ -154,21 +191,133 @@ void main() => runApp(const BillaresApp());
 
 class BillaresApp extends StatelessWidget {
   const BillaresApp({super.key});
-
   @override
-  Widget build(BuildContext context) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'Billares Don Miguel',
-        theme: ThemeData(
-          useMaterial3: true,
-          brightness: Brightness.dark,
-          scaffoldBackgroundColor: Colors.black,
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.green, brightness: Brightness.dark),
-          appBarTheme: const AppBarTheme(backgroundColor: Colors.black, foregroundColor: Colors.white),
-          navigationBarTheme: const NavigationBarThemeData(backgroundColor: Color(0xff111111)),
-        ),
-        home: const LoginPage(),
+  Widget build(BuildContext context) {
+    final Size size = MediaQuery.sizeOf(context);
+    final bool wide = size.width >= 900;
+    final int columns = wide ? 3 : size.width >= 600 ? 2 : 1;
+    final int available = tableList.where((BillTable t) => t.status == TableStatus.available).length;
+    final int playing = tableList.where((BillTable t) => t.status == TableStatus.playing).length;
+    final int pending = tableList.where((BillTable t) => t.status == TableStatus.pending).length;
+
+    Widget statusBadge(BillTable table) {
+      final Color color = table.status == TableStatus.available ? Colors.green : table.status == TableStatus.playing ? Colors.red : Colors.amber;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(color: color.withValues(alpha: .16), borderRadius: BorderRadius.circular(20), border: Border.all(color: color)),
+        child: Text(table.statusText, style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 12)),
       );
+    }
+
+    Widget tableCard(BillTable table) {
+      final Color color = table.status == TableStatus.available ? Colors.green : table.status == TableStatus.playing ? Colors.red : Colors.amber;
+      final double currentAmount = table.status == TableStatus.playing ? table.liveAmount : table.amount;
+      return Card(
+        elevation: 2,
+        clipBehavior: Clip.antiAlias,
+        child: Container(
+          decoration: BoxDecoration(border: Border(left: BorderSide(color: color, width: 6))),
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+            Row(children: <Widget>[Expanded(child: Text('Mesa ${table.number}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900))), statusBadge(table)]),
+            const SizedBox(height: 10),
+            Text('Tarifa fija: ${money(table.rate)} / hora', style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 12),
+            if (table.start != null) Text('Inicio: ${clock(table.start!)}'),
+            if (table.end != null) Text('Finalización: ${clock(table.end!)}'),
+            Text('Tiempo: ${duration(table.elapsedSeconds)}'),
+            const SizedBox(height: 6),
+            Text(money(currentAmount), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
+            const Spacer(),
+            SizedBox(width: double.infinity, height: 46, child: table.status == TableStatus.available
+                ? FilledButton.icon(onPressed: () => startGame(table), icon: const Icon(Icons.play_arrow), label: const Text('Iniciar juego'))
+                : table.status == TableStatus.playing
+                    ? FilledButton.icon(onPressed: () => finishGame(table), icon: const Icon(Icons.stop_circle_outlined), label: const Text('Finalizar juego'))
+                    : FilledButton.icon(onPressed: () => collect(table), icon: const Icon(Icons.point_of_sale), label: const Text('Cobrar'))),
+          ]),
+        ),
+      );
+    }
+
+    Widget dashboard() => ListView(padding: EdgeInsets.zero, children: <Widget>[
+      Wrap(spacing: 10, runSpacing: 10, children: <Widget>[
+        _summaryCard('Disponibles', '$available', Colors.green, Icons.check_circle_outline),
+        _summaryCard('En juego', '$playing', Colors.red, Icons.sports_esports_outlined),
+        _summaryCard('Pendientes', '$pending', Colors.amber, Icons.payments_outlined),
+        _summaryCard('Generado hoy', money(workdayGenerated), Colors.blue, Icons.attach_money),
+      ]),
+      const SizedBox(height: 16),
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: const Color(0xff101826), borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xff1d4ed8))),
+        child: Wrap(alignment: WrapAlignment.spaceBetween, crossAxisAlignment: WrapCrossAlignment.center, spacing: 12, runSpacing: 12, children: <Widget>[
+          Row(mainAxisSize: MainAxisSize.min, children: <Widget>[const Icon(Icons.today, color: Colors.blue), const SizedBox(width: 10), Text(workdayActive ? 'Jornada abierta desde ${clock(workdayOpenedAt ?? DateTime.now())}' : 'Jornada cerrada', style: const TextStyle(fontWeight: FontWeight.w800))]),
+          FilledButton.icon(onPressed: workdayActive ? closeWorkday : openWorkday, icon: Icon(workdayActive ? Icons.lock_clock : Icons.play_circle_outline), label: Text(workdayActive ? 'Cerrar jornada' : 'Abrir jornada')),
+        ]),
+      ),
+      const SizedBox(height: 18),
+      Text('Mesas', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
+      const SizedBox(height: 10),
+      GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: tableList.length, gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: columns, crossAxisSpacing: 14, mainAxisSpacing: 14, mainAxisExtent: 285), itemBuilder: (_, int index) => tableCard(tableList[index])),
+    ]);
+
+    Widget workdayView() => ListView(padding: EdgeInsets.zero, children: <Widget>[
+      Text('Jornada', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
+      const SizedBox(height: 14),
+      Card(child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+        Text(workdayActive ? 'Jornada abierta' : 'Jornada cerrada', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 10),
+        if (workdayOpenedAt != null) Text('Fecha de apertura: ${date(workdayOpenedAt!)}'),
+        if (workdayOpenedAt != null) Text('Hora de apertura: ${clock(workdayOpenedAt!)}'),
+        Text('Juegos: $workdayGames'),
+        Text('Total generado: ${money(workdayGenerated)}'),
+        if (workdayClosedAt != null) Text('Hora de cierre: ${clock(workdayClosedAt!)}'),
+        Text('Efectivo físico: ${money(workdayCashClose)}'),
+        const SizedBox(height: 14),
+        FilledButton.icon(onPressed: workdayActive ? closeWorkday : openWorkday, icon: Icon(workdayActive ? Icons.lock : Icons.lock_open), label: Text(workdayActive ? 'Cerrar jornada' : 'Abrir jornada')),
+      ]))),
+    ]);
+
+    Widget historyView() {
+      if (history.isEmpty) return const Center(child: Text('No hay jornadas registradas todavía.'));
+      final Map<String, List<HistoryEntry>> grouped = <String, List<HistoryEntry>>{};
+      for (final HistoryEntry entry in history) {
+        final String key = date(entry.workDate);
+        grouped.putIfAbsent(key, () => <HistoryEntry>[]).add(entry);
+      }
+      return ListView(padding: EdgeInsets.zero, children: grouped.entries.map((MapEntry<String, List<HistoryEntry>> group) {
+        final double total = group.value.fold<double>(0, (double sum, HistoryEntry e) => sum + e.amount);
+        return Card(margin: const EdgeInsets.only(bottom: 12), child: ExpansionTile(title: Text(group.key, style: const TextStyle(fontWeight: FontWeight.w900)), subtitle: Text('${group.value.length} juegos • ${money(total)} generado'), children: group.value.map((HistoryEntry e) => ListTile(leading: CircleAvatar(child: Text('${e.table}')), title: Text('Mesa ${e.table} • ${money(e.amount)}'), subtitle: Text('Inicio ${clock(e.start)} • Finalización ${clock(e.end)} • ${duration(e.seconds)}'))).toList()));
+      }).toList());
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Row(children: <Widget>[const Icon(Icons.sports_bar), const SizedBox(width: 8), const Flexible(child: Text('Billares Don Miguel', overflow: TextOverflow.ellipsis))]),
+        actions: <Widget>[
+          if (lanPort != null) const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Chip(avatar: Icon(Icons.wifi, size: 16), label: Text('LAN conectado'))),
+          IconButton(tooltip: 'Pantalla TV', onPressed: showTvConnection, icon: const Icon(Icons.tv)),
+          IconButton(tooltip: 'Buscar actualización', onPressed: checkingUpdate ? null : () => checkForUpdate(showNoUpdate: true), icon: const Icon(Icons.system_update_alt)),
+          IconButton(tooltip: 'Configuración', onPressed: showSettings, icon: const Icon(Icons.settings_outlined)),
+          IconButton(tooltip: 'Cerrar sesión', onPressed: logout, icon: const Icon(Icons.logout)),
+        ],
+      ),
+      body: SafeArea(child: Padding(padding: EdgeInsets.symmetric(horizontal: wide ? 24 : 14, vertical: 14), child: tab == 0 ? dashboard() : tab == 1 ? workdayView() : historyView())),
+      bottomNavigationBar: NavigationBar(selectedIndex: tab, onDestinationSelected: (int value) => setState(() => tab = value), destinations: const <NavigationDestination>[
+        NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Mesas'),
+        NavigationDestination(icon: Icon(Icons.calendar_today_outlined), selectedIcon: Icon(Icons.calendar_today), label: 'Jornada'),
+        NavigationDestination(icon: Icon(Icons.history_outlined), selectedIcon: Icon(Icons.history), label: 'Historial'),
+      ]),
+    );
+  }
+
+  Widget _summaryCard(String label, String value, Color color, IconData icon) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    decoration: BoxDecoration(color: color.withValues(alpha: .12), borderRadius: BorderRadius.circular(16), border: Border.all(color: color.withValues(alpha: .45))),
+    child: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[Icon(icon, color: color), const SizedBox(width: 8), Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[Text(label, style: const TextStyle(fontSize: 12)), Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900))])],
+  );
+
 }
 
 class LoginPage extends StatefulWidget {
