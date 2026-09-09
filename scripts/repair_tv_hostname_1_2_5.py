@@ -14,12 +14,20 @@ if 'RawDatagramSocket? _billaresMdnsSocket;' not in s:
         raise SystemExit('No se encontró la declaración de HttpServer')
     s = s[:marker.end()] + "\n  RawDatagramSocket? _billaresMdnsSocket;" + s[marker.end():]
 
-old_bind = "server = await HttpServer.bind(InternetAddress.anyIPv4, 8080, shared: true);"
-new_bind = "server = await HttpServer.bind(InternetAddress.anyIPv4, 80, shared: true);"
-if old_bind in s:
-    s = s.replace(old_bind, new_bind, 1)
-elif "HttpServer.bind(InternetAddress.anyIPv4, 80, shared: true)" not in s:
-    raise SystemExit('No se encontró el bind HTTP esperado')
+# Normaliza cualquier HttpServer.bind a puerto 80 sin depender de espacios o saltos de línea.
+bind_pattern = re.compile(r'HttpServer\.bind\s*\(\s*InternetAddress\.anyIPv4\s*,\s*([^,\)]+)([^\)]*)\)')
+matches = list(bind_pattern.finditer(s))
+if not matches:
+    raise SystemExit('No se encontró HttpServer.bind del servidor TV')
+if not any(m.group(1).strip() == '80' for m in matches):
+    first = matches[0]
+    replacement = f"HttpServer.bind(InternetAddress.anyIPv4, 80{first.group(2)})"
+    s = s[:first.start()] + replacement + s[first.end():]
+
+normalized = re.sub(r'\s+', ' ', s)
+binds = re.findall(r'HttpServer\.bind\s*\(\s*InternetAddress\.anyIPv4\s*,\s*([^,\)]+)', normalized)
+if not any(arg.strip() == '80' for arg in binds):
+    raise SystemExit(f'El servidor TV no quedó en puerto 80: {binds}')
 
 needle = "server!.listen(handleRequest, onError: (_) {});\n      if (mounted) setState(() {});"
 replacement = "server!.listen(handleRequest, onError: (_) {});\n      await _startBillaresMdns();\n      if (mounted) setState(() {});"
@@ -95,6 +103,9 @@ if 'Future<void> _startBillaresMdns() async {' not in s:
 
 if 'server?.close(force: true);' in s and '_billaresMdnsSocket?.close();' not in s:
     s = s.replace('server?.close(force: true);', 'server?.close(force: true);\n      _billaresMdnsSocket?.close();', 1)
+
+if 'billaresdonmiguel.local' not in s:
+    raise SystemExit('Hostname TV ausente después de la reparación')
 
 TARGET.write_text(s)
 subprocess.check_call(['python3', 'scripts/repair_tv_final_safety.py'])
