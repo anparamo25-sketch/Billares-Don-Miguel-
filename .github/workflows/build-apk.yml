@@ -48,7 +48,20 @@ jobs:
             export PATH="$(dirname "$SDKMANAGER"):$PATH"
           fi
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-${COMPILE_SDK}" "build-tools;36.0.0" "ndk;${NDK_VERSION}"
+          SDK_ROOT="${ANDROID_HOME:-/opt/android-sdk}"
+          rm -rf "$SDK_ROOT/ndk/${NDK_VERSION}" "$SDK_ROOT/.temp" || true
+          installed=0
+          for attempt in 1 2 3; do
+            echo "Instalación Android SDK/NDK, intento $attempt/3"
+            if sdkmanager "platforms;android-${COMPILE_SDK}" "build-tools;36.0.0" "ndk;${NDK_VERSION}"; then
+              if [ -d "$SDK_ROOT/ndk/${NDK_VERSION}" ]; then installed=1; break; fi
+            fi
+            rm -rf "$SDK_ROOT/ndk/${NDK_VERSION}" "$SDK_ROOT/.temp" || true
+            sleep 3
+          done
+          if [ "$installed" -ne 1 ]; then
+            echo "ERROR: No se pudo instalar NDK ${NDK_VERSION} después de 3 intentos."; exit 1
+          fi
       - name: Generar plataforma Android limpia
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
       - name: Preparar versión 1.2.5
