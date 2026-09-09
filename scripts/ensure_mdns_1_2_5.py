@@ -58,7 +58,7 @@ Future<void> _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram) as
     if (parts.length != 4) return;
     final List<int> response = <int>[];
     response.addAll(query.sublist(0, 2));
-    response.addAll(<int>[0x84, 0, 0, 0, 0, 1, 0, 0, 0, 0]);
+    response.addAll(<int>[0x84, 0, 0, 0, 0, 1, 0, 0, 0, 120, 0, 4]);
     response.addAll(query.sublist(12, offset));
     response.addAll(<int>[0xC0, 0x0C, 0, 1, 0, 1, 0, 0, 0, 120, 0, 4]);
     response.addAll(parts);
@@ -73,7 +73,9 @@ SERVER = '''  Future<void> startLanServer() async {
       for (final NetworkInterface networkInterface in interfaces) {
         for (final InternetAddress address in networkInterface.addresses) {
           final List<int> p = address.address.split('.').map(int.parse).toList();
-          if (p.length == 4 && !address.isLoopback && !address.isLinkLocal && !address.isMulticast && (p[0] == 10 || (p[0] == 172 && p[1] >= 16 && p[1] <= 31) || (p[0] == 192 && p[1] == 168))) { lanIp = address.address; }
+          if (p.length == 4 && !address.isLoopback && !address.isLinkLocal && !address.isMulticast && (p[0] == 10 || (p[0] == 172 && p[1] >= 16 && p[1] <= 31) || (p[0] == 192 && p[1] == 168))) {
+            lanIp = address.address;
+          }
         }
       }
       server!.listen(handleRequest, onError: (_) {});
@@ -116,18 +118,54 @@ def remove_async(s, names):
         e = brace_end(s, s.find('{', m.start(), m.end()))
         s = s[:m.start()] + s[e:]
 
+def class_end(s, class_start):
+    open_pos = s.find('{', class_start)
+    if open_pos < 0: raise SystemExit('mDNS ENSURE FAILED: clase Dart sin cuerpo')
+    return brace_end(s, open_pos)
+
+def insert_server_structure(s):
+    # Prefer the class that owns the TV getter. If the generated source has no
+    # HttpServer field, create the field and the canonical server method there.
+    tv_getter = re.search(r'(?m)^\s*String\s+get\s+tvHtml\s*=>', s)
+    if tv_getter:
+        class_matches = list(re.finditer(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*(?:\s+extends\s+[A-Za-z_][A-Za-z0-9_<>]*)?(?:\s+with\s+[^\{]+)?\s*\{', s[:tv_getter.start()]))
+        if class_matches:
+            cm = class_matches[-1]
+            end = class_end(s, cm.start())
+            if tv_getter.start() < end:
+                class_body_open = s.find('{', cm.start(), cm.end())
+                insertion = s[class_body_open + 1:]
+                field_match = re.search(r'\bHttpServer\s*\?\s*server\s*;', s[cm.start():end])
+                if not field_match:
+                    absolute_field_pos = class_body_open + 1
+                    s = s[:absolute_field_pos] + '\n  HttpServer? server;\n  String? lanIp;\n' + s[absolute_field_pos:]
+                    return s
+    # Last-resort structural insertion into the first StatefulWidget state class,
+    # still without requiring a specific generated class name.
+    for cm in re.finditer(r'\bclass\s+[A-Za-z_][A-Za-z0-9_]*\s+extends\s+State\s*<[^>]+>[^\{]*\{', s):
+        end = class_end(s, cm.start())
+        segment = s[cm.start():end]
+        if 'HttpServer? server;' not in segment:
+            pos = s.find('{', cm.start(), cm.end()) + 1
+            return s[:pos] + '\n  HttpServer? server;\n  String? lanIp;\n' + s[pos:]
+    raise SystemExit('mDNS ENSURE FAILED: no se encontró una clase de interfaz donde crear la estructura LAN')
+
 s = TARGET.read_text()
 if "import 'dart:io';" not in s:
     imports = list(re.finditer(r'(?m)^import\s+[^\n]+\n', s)); pos = imports[-1].end() if imports else 0
     s = s[:pos] + "import 'dart:io';\n" + s[pos:]
 s = remove_async(s, ('startLanServer', '_startBillaresMdns', '_answerBillaresMdns', '_billaresLocalIp'))
 s = re.sub(r'(?m)^\s*RawDatagramSocket\?\s+_billaresMdnsSocket;\s*\n?', '', s)
-# Reconstruir el servidor dentro de su clase real usando el campo HttpServer como ancla; no se exige nombre de clase ni stateMap.
+
+if not re.search(r'\bHttpServer\s*\?\s*server\s*;', s):
+    s = insert_server_structure(s)
+
 server_field = re.search(r'\bHttpServer\s*\?\s*server\s*;', s)
 if not server_field:
-    raise SystemExit('mDNS ENSURE FAILED: la fuente generada no contiene el campo HttpServer del servidor LAN')
-server_insert = server_field.end()
-s = s[:server_insert] + '\n' + SERVER + s[server_insert:]
+    raise SystemExit('mDNS ENSURE FAILED: no se pudo crear el campo HttpServer del servidor LAN')
+server_end = server_field.end()
+s = s[:server_end] + '\n' + SERVER + s[server_end:]
+
 imports = list(re.finditer(r'(?m)^import\s+[^\n]+\n', s)); pos = imports[-1].end() if imports else 0
 s = s[:pos] + '\n' + FIELD + MDNS + s[pos:]
 normalized = re.sub(r'\s+', ' ', s)
@@ -146,4 +184,4 @@ checks = (
 for ok, message in checks:
     if not ok: raise SystemExit('mDNS ENSURE FAILED: ' + message)
 TARGET.write_text(s)
-print('OK: servidor LAN y mDNS reconstruidos desde el campo HttpServer real; interfaz TV intacta')
+print('OK: estructura LAN creada si faltaba; servidor y mDNS reconstruidos sin tocar la interfaz TV')
