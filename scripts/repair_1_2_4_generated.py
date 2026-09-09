@@ -6,8 +6,9 @@ import py_compile
 TARGET = Path('lib/main.dart')
 STABLE_COMMIT = '5e5ec88e7f6c12f5c1dae006ad95da4b903f950d'
 
-# Preflight: ningún script de reparación puede estar roto antes de generar Dart.
-for script in ('scripts/prepare_1_2_4.py', 'scripts/repair_1_2_4_generated.py', 'scripts/repair_tv_1_2_4.py', 'scripts/repair_tv_hostname_1_2_5.py'):
+# Los reparadores se validan antes de ejecutar; el reparador de sintaxis TV se ejecuta
+# primero porque convierte su plantilla a una forma Python válida antes de compilarla.
+for script in ('scripts/prepare_1_2_4.py', 'scripts/repair_1_2_4_generated.py', 'scripts/repair_tv_script_syntax.py', 'scripts/repair_tv_hostname_1_2_5.py'):
     try:
         py_compile.compile(script, doraise=True)
     except py_compile.PyCompileError as exc:
@@ -84,13 +85,18 @@ if 'class _DashboardPageState' not in current:
     raise SystemExit('REPAIR PREFLIGHT FAILED: DashboardPage ausente')
 
 TARGET.write_text(current)
+
+# Reparar primero la sintaxis Python del generador TV y comprobarla de nuevo.
+subprocess.check_call(['python3', 'scripts/repair_tv_script_syntax.py'])
+py_compile.compile('scripts/repair_tv_1_2_4.py', doraise=True)
 subprocess.check_call(['python3', 'scripts/repair_tv_1_2_4.py'])
+py_compile.compile('scripts/repair_tv_hostname_1_2_5.py', doraise=True)
 subprocess.check_call(['python3', 'scripts/repair_tv_hostname_1_2_5.py'])
+
 current = TARGET.read_text()
 current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.5+125';", current, count=1)
 current = current.replace('tv_web_receiver_disabled', 'tv_cast').replace('ACTION_CAST_SETTINGS_DISABLED', 'ACTION_CAST_SETTINGS')
 
-# Validaciones estructurales estrictas del receptor.
 required = {
     'String get tvHtml {': 'tvHtml ausente',
     'Billares Don Miguel - TV': 'título TV ausente',
@@ -98,18 +104,17 @@ required = {
     'billaresdonmiguel.local': 'hostname TV ausente',
     'HttpServer.bind(InternetAddress.anyIPv4, 80, shared: true)': 'servidor HTTP puerto 80 ausente',
     'RawDatagramSocket? _billaresMdnsSocket;': 'mDNS ausente',
+    "function money(n){return 'C$ '": 'formato monetario TV ausente',
 }
 for marker, message in required.items():
     if marker not in current:
         raise SystemExit(f'REPAIR TV FAILED: {message}')
 
-# Detectar antes de flutter format los patrones de strings Dart que ya provocaron fallos.
+if 'return r\''' in current:
+    raise SystemExit('REPAIR TV FAILED: delimitador Python quedó dentro del Dart generado')
 if "replaceAll('\\\\', '\\\\\\\\')" in current:
     raise SystemExit('REPAIR TV FAILED: escape inválido en initialState')
-if "return 'C\\\\$ '" not in current:
-    raise SystemExit('REPAIR TV FAILED: formato monetario del receptor no está escapado correctamente')
 
-# El receptor es una página web independiente; ACTION_CAST_SETTINGS se conserva solo como compatibilidad.
 if 'ACTION_CAST_SETTINGS' in current and 'Duplicar pantalla' not in current:
     raise SystemExit('REPAIR TV FAILED: ruta de duplicación de pantalla no está identificada')
 
