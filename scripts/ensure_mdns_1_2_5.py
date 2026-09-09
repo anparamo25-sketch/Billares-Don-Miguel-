@@ -206,28 +206,49 @@ def remove_mdns(source: str) -> str:
     return source
 
 
+def find_class_containing(source: str, marker: str):
+    pos = source.find(marker)
+    if pos < 0:
+        return None
+    for start, end in class_spans(source):
+        if start < pos < end:
+            return start, end
+    return None
+
+
 def replace_start_server(source: str) -> str:
     pattern = re.compile(
         r'\bFuture\s*<\s*void\s*>\s+startLanServer\s*\(\s*\)\s+async\s*\{'
     )
     match = pattern.search(source)
     if match:
+        owner = find_class_containing(source, 'startLanServer')
+        if owner is None:
+            raise SystemExit('mDNS ENSURE FAILED: startLanServer no pertenece a una clase Dart')
         open_pos = source.find('{', match.start(), match.end())
         end_pos = matching_brace(source, open_pos)
         return source[:match.start()] + CANONICAL_SERVER + source[end_pos:]
 
-    state = re.search(r'\bMap<String,\s*dynamic>\s+stateMap\s*\(\s*\)', source)
-    if not state:
-        raise SystemExit('mDNS ENSURE FAILED: no se encontró el método stateMap para ubicar el servidor LAN')
-
-    owner = None
-    for start, end in class_spans(source):
-        if start < state.start() < end:
-            owner = (start, end)
-            break
+    # No dependemos de stateMap ni de un nombre concreto de clase. Si el
+    # servidor todavía no existe, lo colocamos dentro de la clase real que
+    # contiene su handler HTTP o su campo HttpServer.
+    owner = find_class_containing(source, 'handleRequest')
     if owner is None:
-        raise SystemExit('mDNS ENSURE FAILED: stateMap no pertenece a una clase Dart')
-    return source[:state.start()] + CANONICAL_SERVER + '\n' + source[state.start():]
+        owner = find_class_containing(source, 'HttpServer? server')
+    if owner is None:
+        raise SystemExit('mDNS ENSURE FAILED: no se encontró una clase real que aloje el servidor LAN')
+
+    start, end = owner
+    class_body = source[start:end]
+    anchor = re.search(r'\bFuture\s*<\s*void\s*>\s+handleRequest\s*\(', class_body)
+    if anchor is None:
+        anchor = re.search(r'\bHttpServer\?\s+server\s*;', class_body)
+        if anchor is None:
+            raise SystemExit('mDNS ENSURE FAILED: no se encontró un punto estructural para el servidor LAN')
+        insert_at = start + anchor.end()
+    else:
+        insert_at = start + anchor.start()
+    return source[:insert_at] + CANONICAL_SERVER + '\n' + source[insert_at:]
 
 
 source = TARGET.read_text()
@@ -264,4 +285,4 @@ if '\\nFuture<void> _startBillaresMdns()' in source or '\\nFuture<String?> _bill
     raise SystemExit('mDNS ENSURE FAILED: saltos de línea literales detectados')
 
 TARGET.write_text(source)
-print('OK: servidor LAN reconstruido estructuralmente en puerto 80 y mDNS integrado; sin stateMap como dependencia de búsqueda, sin nombres de clase y sin parches de texto')
+print('OK: servidor LAN y mDNS reconstruidos estructuralmente sin depender de stateMap ni de nombres de clases')
