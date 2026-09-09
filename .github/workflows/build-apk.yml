@@ -1,5 +1,8 @@
 name: Billares Don Miguel - Build APK
 
+# Ejecución manual de validación/distribución de 1.2.4+124.
+# La compilación genera el APK para instalación manual.
+
 on:
   push:
     branches: [main]
