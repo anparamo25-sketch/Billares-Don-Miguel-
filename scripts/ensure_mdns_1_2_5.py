@@ -3,17 +3,11 @@ import re
 
 TARGET = Path('lib/main.dart')
 s = TARGET.read_text()
-
 FIELD = '  RawDatagramSocket? _billaresMdnsSocket;\n'
 METHOD = r'''  Future<void> _startBillaresMdns() async {
     try {
       _billaresMdnsSocket?.close();
-      final RawDatagramSocket socket = await RawDatagramSocket.bind(
-        InternetAddress.anyIPv4,
-        5353,
-        reuseAddress: true,
-        reusePort: true,
-      );
+      final RawDatagramSocket socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 5353, reuseAddress: true, reusePort: true);
       _billaresMdnsSocket = socket;
       final InternetAddress multicast = InternetAddress('224.0.0.251');
       try { socket.joinMulticast(multicast); } catch (_) {}
@@ -45,16 +39,14 @@ METHOD = r'''  Future<void> _startBillaresMdns() async {
         if (offset + 4 > q.length) return;
         final int type = (q[offset] << 8) | q[offset + 1];
         offset += 4;
-        final String name = labels.join('.').toLowerCase();
-        if (name == 'billaresdonmiguel.local' && (type == 1 || type == 255)) matched = true;
+        if (labels.join('.').toLowerCase() == 'billaresdonmiguel.local' && (type == 1 || type == 255)) matched = true;
       }
       if (!matched || lanIp == null) return;
       final List<int> ip = lanIp!.split('.').map(int.parse).toList();
       if (ip.length != 4) return;
       final List<int> response = <int>[];
       response.addAll(q.sublist(0, 2));
-      response.addAll(<int>[0x84, 0x00]);
-      response.addAll(<int>[0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]);
+      response.addAll(<int>[0x84, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]);
       response.addAll(q.sublist(12, offset));
       response.addAll(<int>[0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x78, 0x00, 0x04]);
       response.addAll(ip);
@@ -64,14 +56,14 @@ METHOD = r'''  Future<void> _startBillaresMdns() async {
 
 '''
 
-if 'RawDatagramSocket? _billaresMdnsSocket;' not in s:
+if FIELD not in s:
     marker = re.search(r'(?m)^\s*HttpServer\?\s+server\s*;', s)
     if marker:
         s = s[:marker.end()] + '\n' + FIELD.rstrip() + s[marker.end():]
     else:
-        marker = re.search(r'(?m)^class\s+_DashboardPageState\b[^\{]*\{', s)
+        marker = re.search(r'(?m)^class\s+[^\n\{]+\{', s)
         if not marker:
-            raise SystemExit('mDNS ENSURE FAILED: no se encontró Dashboard')
+            raise SystemExit('mDNS ENSURE FAILED: no se encontró una clase Dart donde insertar el socket')
         s = s[:marker.end()] + '\n' + FIELD + s[marker.end():]
 
 if 'Future<void> _startBillaresMdns() async {' not in s:
@@ -86,14 +78,9 @@ if 'await _startBillaresMdns();' not in s:
         raise SystemExit('mDNS ENSURE FAILED: no se encontró server.listen')
     s = s[:m.end()] + '\n      await _startBillaresMdns();' + s[m.end():]
 
-if 'billaresdonmiguel.local' not in s:
-    raise SystemExit('mDNS ENSURE FAILED: hostname ausente')
-if 'RawDatagramSocket? _billaresMdnsSocket;' not in s:
-    raise SystemExit('mDNS ENSURE FAILED: socket ausente')
-if 'Future<void> _startBillaresMdns() async {' not in s:
-    raise SystemExit('mDNS ENSURE FAILED: método ausente')
-if 'await _startBillaresMdns();' not in s:
-    raise SystemExit('mDNS ENSURE FAILED: arranque ausente')
+for required in (FIELD.rstrip(), 'Future<void> _startBillaresMdns() async {', 'await _startBillaresMdns();', 'billaresdonmiguel.local'):
+    if required not in s:
+        raise SystemExit('mDNS ENSURE FAILED: componente ausente: ' + required)
 
 TARGET.write_text(s)
-print('OK: mDNS determinista presente, con socket 5353, respuesta a billaresdonmiguel.local y arranque del servicio')
+print('OK: mDNS determinista presente sin depender del nombre de Dashboard')
