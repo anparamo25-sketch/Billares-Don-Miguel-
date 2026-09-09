@@ -3,10 +3,12 @@ import py_compile
 import re
 
 PRODUCER = Path('scripts/rebuild_tv_1_2_5.py')
-TARGET = Path('lib/main.dart')
+
+# Este preflight ocurre ANTES de generar lib/main.dart.
+# Solo valida el productor canónico. La salida generada se valida
+# posteriormente por repair_1_2_4_generated.py.
 py_compile.compile(str(PRODUCER), doraise=True)
 producer = re.sub(r'\s+', ' ', PRODUCER.read_text())
-source = TARGET.read_text()
 checks = (
     ('RawDatagramSocket? _billaresMdnsSocket;' in producer, 'socket mDNS'),
     ('Future<void> _startBillaresMdns() async' in producer, 'inicio mDNS'),
@@ -21,10 +23,5 @@ checks = (
 for ok, name in checks:
     if not ok:
         raise SystemExit(f'mDNS PREFLIGHT FAILED: productor incompleto: {name}')
-if source.count('RawDatagramSocket? _billaresMdnsSocket;') != 1:
-    raise SystemExit('mDNS PREFLIGHT FAILED: socket mDNS duplicado o ausente')
-if source.count('await _startBillaresMdns();') != 1:
-    raise SystemExit('mDNS PREFLIGHT FAILED: arranque mDNS duplicado o ausente')
-if 'http://billaresdonmiguel.local/tv' not in source:
-    raise SystemExit('mDNS PREFLIGHT FAILED: receptor TV ausente')
-print('OK: preflight mDNS completado; este script no modifica la fuente')
+
+print('OK: preflight del productor canónico completado')
