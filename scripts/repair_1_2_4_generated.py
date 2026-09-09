@@ -1,33 +1,57 @@
 from pathlib import Path
 import re
 import subprocess
+import py_compile
 
 TARGET = Path('lib/main.dart')
 STABLE_COMMIT = '5e5ec88e7f6c12f5c1dae006ad95da4b903f950d'
 
+# Preflight: los scripts de reparación deben ser Python válido antes de tocar main.dart.
+for script in ('scripts/prepare_1_2_4.py', 'scripts/repair_1_2_4_generated.py', 'scripts/repair_tv_1_2_4.py', 'scripts/repair_tv_hostname_1_2_5.py'):
+    try:
+        py_compile.compile(script, doraise=True)
+    except py_compile.PyCompileError as exc:
+        raise SystemExit(f'PREFLIGHT PYTHON FAILED: {script}: {exc}')
+
 def class_span(source: str, class_name: str):
     match = re.search(rf'\bclass\s+{re.escape(class_name)}\b[^{{]*\{{', source)
-    if not match: raise SystemExit(f'No se encontró la clase {class_name}')
-    start = match.start(); brace = source.find('{', match.start()); depth = 0; in_string = False; quote = ''; escaped = False
+    if not match:
+        raise SystemExit(f'No se encontró la clase {class_name}')
+    start = match.start()
+    brace = source.find('{', match.start())
+    depth = 0
+    in_string = False
+    quote = ''
+    escaped = False
     for i in range(brace, len(source)):
         ch = source[i]
         if in_string:
-            if escaped: escaped = False
-            elif ch == '\\': escaped = True
-            elif ch == quote: in_string = False
+            if escaped:
+                escaped = False
+            elif ch == '\\':
+                escaped = True
+            elif ch == quote:
+                in_string = False
             continue
-        if ch in ("'", '"'): in_string = True; quote = ch; continue
-        if ch == '{': depth += 1
+        if ch in ("'", '"'):
+            in_string = True
+            quote = ch
+            continue
+        if ch == '{':
+            depth += 1
         elif ch == '}':
             depth -= 1
-            if depth == 0: return start, i + 1
+            if depth == 0:
+                return start, i + 1
     raise SystemExit(f'Llaves sin cerrar en {class_name}')
 
 def extract_class(source: str, class_name: str) -> str:
-    a, b = class_span(source, class_name); return source[a:b]
+    a, b = class_span(source, class_name)
+    return source[a:b]
 
 def replace_class(source: str, class_name: str, replacement: str) -> str:
-    a, b = class_span(source, class_name); return source[:a] + replacement + source[b:]
+    a, b = class_span(source, class_name)
+    return source[:a] + replacement + source[b:]
 
 current = TARGET.read_text()
 try:
@@ -39,23 +63,27 @@ current = replace_class(current, '_LoginPageState', extract_class(baseline, '_Lo
 current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.5+125';", current, count=1)
 current = re.sub(r"const String updateManifestUrl = '[^']+';", "const String updateManifestUrl = 'https://github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json';", current, count=1)
 
-lines = current.splitlines(); out = []; seen = set()
+lines = current.splitlines()
+out = []
+seen = set()
 for line in lines:
     if line.startswith('import '):
-        if line in seen: continue
+        if line in seen:
+            continue
         seen.add(line)
     out.append(line)
 current = '\n'.join(out) + '\n'
 
 login = extract_class(current, '_LoginPageState')
 for bad in ('checkingUpdate', 'showSettings', 'logout', 'dashboard()', 'historyPage()'):
-    if bad in login: raise SystemExit(f'REPAIR PREFLIGHT FAILED: {bad} quedó dentro de _LoginPageState')
-if "appVersion = '1.2.5+125'" not in current: raise SystemExit('REPAIR PREFLIGHT FAILED: versión 1.2.5+125 ausente')
-if 'class _DashboardPageState' not in current: raise SystemExit('REPAIR PREFLIGHT FAILED: DashboardPage ausente')
+    if bad in login:
+        raise SystemExit(f'REPAIR PREFLIGHT FAILED: {bad} quedó dentro de _LoginPageState')
+if "appVersion = '1.2.5+125'" not in current:
+    raise SystemExit('REPAIR PREFLIGHT FAILED: versión 1.2.5+125 ausente')
+if 'class _DashboardPageState' not in current:
+    raise SystemExit('REPAIR PREFLIGHT FAILED: DashboardPage ausente')
 
 TARGET.write_text(current)
-# Corrige primero los delimitadores del script de reparación TV antes de ejecutarlo.
-subprocess.check_call(['python3', 'scripts/repair_tv_script_syntax.py'])
 subprocess.check_call(['python3', 'scripts/repair_tv_1_2_4.py'])
 subprocess.check_call(['python3', 'scripts/repair_tv_hostname_1_2_5.py'])
 current = TARGET.read_text()
@@ -63,10 +91,22 @@ current = re.sub(r"const String appVersion = '[^']+';", "const String appVersion
 current = current.replace('tv_web_receiver_disabled', 'tv_cast').replace('ACTION_CAST_SETTINGS_DISABLED', 'ACTION_CAST_SETTINGS')
 
 # Validaciones estrictas del receptor generado.
-if 'String get tvHtml {' not in current: raise SystemExit('REPAIR TV FAILED: tvHtml ausente')
-if "Billares Don Miguel - TV" not in current: raise SystemExit('REPAIR TV FAILED: título TV ausente')
-if "fetch('/api/state?ts='+Date.now()" not in current: raise SystemExit('REPAIR TV FAILED: actualización TV ausente')
-if "C\\$ " not in current: raise SystemExit('REPAIR TV FAILED: escapado de C$ ausente')
-if 'billaresdonmiguel.local' not in current: raise SystemExit('REPAIR TV FAILED: hostname TV ausente')
+required = {
+    'String get tvHtml {': 'tvHtml ausente',
+    'Billares Don Miguel - TV': 'título TV ausente',
+    "fetch('/api/state?ts='+Date.now()": 'actualización TV ausente',
+    "C\\$ ": 'escapado de C$ ausente',
+    'billaresdonmiguel.local': 'hostname TV ausente',
+    'HttpServer.bind(InternetAddress.anyIPv4, 80, shared: true)': 'servidor HTTP puerto 80 ausente',
+    'RawDatagramSocket? _billaresMdnsSocket;': 'mDNS ausente',
+}
+for marker, message in required.items():
+    if marker not in current:
+        raise SystemExit(f'REPAIR TV FAILED: {message}')
+
+# El receptor debe ser independiente del árbol de widgets del administrador.
+if 'ACTION_CAST_SETTINGS' in current and 'Duplicar pantalla' not in current:
+    raise SystemExit('REPAIR TV FAILED: ruta de duplicación de pantalla no está identificada')
+
 TARGET.write_text(current)
-print('OK: 1.2.5 source repaired and TV receiver validated')
+print('OK: 1.2.5 source repaired; TV receiver and Python scripts validated')
