@@ -10,6 +10,7 @@ REQUIRED = {
     "tv_getter": 'String get tvHtml =>',
     "tv_title": 'Billares Don Miguel',
     "tv_host": 'billaresdonmiguel.local',
+    "tv_url": 'http://billaresdonmiguel.local/tv',
     "tv_api": '/api/state?ts=',
     "lan_port_field": 'lanPort',
     "mdns_socket": 'RawDatagramSocket',
