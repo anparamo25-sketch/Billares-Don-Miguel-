@@ -18,7 +18,6 @@ REQUIRED = {
     "workday": 'workdayActive',
     "cash_close": 'workdayCashClose',
     "workday_games": 'workdayGames',
-    "fixed_rates": 'tableRates = <int, double>{1: 120, 2: 120, 3: 100, 4: 100, 5: 70}',
     "ota_permission": 'onCheckInstallApkPermission',
     "ota_install": 'onInstallApk(path)',
 }
@@ -26,6 +25,11 @@ REQUIRED = {
 for name, marker in REQUIRED.items():
     if marker not in SOURCE and marker not in NORMALIZED:
         raise SystemExit(f'1.2.6 CONTRACT FAILED: falta {name}: {marker}')
+
+# Tarifas fijas: se acepta tanto const Map como Map, pero los cinco valores deben coincidir exactamente.
+rate_pattern = r'(?:const\s+)?Map\s*<\s*int\s*,\s*double\s*>\s+tableRates\s*=\s*<\s*int\s*,\s*double\s*>\s*\{\s*1\s*:\s*120\s*,\s*2\s*:\s*120\s*,\s*3\s*:\s*100\s*,\s*4\s*:\s*100\s*,\s*5\s*:\s*70\s*\}'
+if not re.search(rate_pattern, NORMALIZED):
+    raise SystemExit('1.2.6 CONTRACT FAILED: tarifas fijas incorrectas o ausentes')
 
 # Los puertos se validan semánticamente para no depender del formato que aplica dart format.
 for port in (80, 8080):
@@ -59,6 +63,10 @@ for marker in ('color:#1557c0', 'text-shadow:', 'font-size:clamp('):
 for marker in ('.green{', '.red{', '.yellow{', "'Disponible'", "'En juego'", "'Pendiente de cobro'"):
     if marker not in SOURCE:
         raise SystemExit(f'1.2.6 CONTRACT FAILED: estado visual ausente: {marker}')
+
+# La TV debe reflejar la hora de finalización en cada tarjeta.
+if 'Finalización:' not in SOURCE:
+    raise SystemExit('1.2.6 CONTRACT FAILED: falta hora de finalización en TV/tarjetas')
 
 # El panel externo de vigilancia NO pertenece a 1.2.6.
 if 'panel externo' in SOURCE.lower() or 'vigilancia externa' in SOURCE.lower():
