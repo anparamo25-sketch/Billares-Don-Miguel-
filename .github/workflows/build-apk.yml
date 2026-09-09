@@ -12,8 +12,8 @@ permissions:
 
 env:
   FLUTTER_VERSION: 3.29.3
-  BUILD_NAME: 1.2.3
-  BUILD_NUMBER: 123
+  BUILD_NAME: 1.2.4
+  BUILD_NUMBER: 124
   MIN_SDK: 23
   COMPILE_SDK: 36
   NDK_VERSION: 27.0.12077973
@@ -28,100 +28,61 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
-
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-
       - name: Preparar SDK y NDK de Android
         shell: bash
         run: |
           set -euo pipefail
-          if [ -n "${ANDROID_HOME:-}" ]; then
-            export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/platform-tools:$PATH"
-          fi
+          if [ -n "${ANDROID_HOME:-}" ]; then export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/platform-tools:$PATH"; fi
           if ! command -v sdkmanager >/dev/null 2>&1; then
             SDKMANAGER="$(find "${ANDROID_HOME:-/opt/android-sdk}" /usr/local/lib/android/sdk /opt/hostedtoolcache -type f -name sdkmanager 2>/dev/null | head -n 1 || true)"
-            if [ -z "$SDKMANAGER" ]; then
-              echo "ERROR: No se encontró sdkmanager en el runner de GitHub."
-              exit 1
-            fi
+            if [ -z "$SDKMANAGER" ]; then echo "ERROR: No se encontró sdkmanager en el runner de GitHub."; exit 1; fi
             export PATH="$(dirname "$SDKMANAGER"):$PATH"
           fi
           echo "sdkmanager: $(command -v sdkmanager)"
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-${COMPILE_SDK}" "build-tools;36.0.0" "ndk;${NDK_VERSION}"
-
       - name: Generar plataforma Android limpia
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
-
-      - name: Preparar conectividad TV 1.2.3
-        run: python3 scripts/prepare_1_2_3.py
-
+      - name: Preparar versión 1.2.4 y conectividad TV
+        run: python3 scripts/prepare_1_2_4.py
       - name: Configurar Android para LAN, actualizaciones, segundo plano y compatibilidad
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
-          gradle = Path('android/app/build.gradle.kts')
-          s = gradle.read_text()
-          s = s.replace('compileSdk = flutter.compileSdkVersion', 'compileSdk = 36')
-          s = s.replace('ndkVersion = flutter.ndkVersion', 'ndkVersion = "27.0.12077973"')
-          s = s.replace('minSdk = flutter.minSdkVersion', 'minSdk = 23')
-          gradle.write_text(s)
-
-          manifest = Path('android/app/src/main/AndroidManifest.xml')
-          s = manifest.read_text()
-          marker = '<uses-permission android:name="android.permission.INTERNET" />'
+          gradle = Path('android/app/build.gradle.kts'); s = gradle.read_text()
+          s = s.replace('compileSdk = flutter.compileSdkVersion', 'compileSdk = 36').replace('ndkVersion = flutter.ndkVersion', 'ndkVersion = "27.0.12077973"').replace('minSdk = flutter.minSdkVersion', 'minSdk = 23'); gradle.write_text(s)
+          manifest = Path('android/app/src/main/AndroidManifest.xml'); s = manifest.read_text(); marker = '<uses-permission android:name="android.permission.INTERNET" />'
           if marker not in s:
-              s = s.replace(
-                  '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
-                  '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'
-                  '    <uses-permission android:name="android.permission.INTERNET" />\n'
-                  '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n'
-                  '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n'
-                  '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />'
-              )
-          if 'android:usesCleartextTraffic=' not in s:
-              s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
+              s = s.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">', '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />')
+          if 'android:usesCleartextTraffic=' not in s: s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
           s = s.replace('android:label="billares_don_miguel"', 'android:label="Billares Don Miguel"')
-          service = '''    <service
-                android:name="de.julianassmann.flutter_background.IsolateHolderService"
-                android:exported="false"
-                android:foregroundServiceType="specialUse" />'''
-          if 'de.julianassmann.flutter_background.IsolateHolderService' not in s:
-              s = s.replace('    </application>', service + '\n    </application>')
+          service = '''    <service\n                android:name="de.julianassmann.flutter_background.IsolateHolderService"\n                android:exported="false"\n                android:foregroundServiceType="specialUse" />'''
+          if 'de.julianassmann.flutter_background.IsolateHolderService' not in s: s = s.replace('    </application>', service + '\n    </application>')
           manifest.write_text(s)
           PY
-
       - name: Instalar dependencias
         run: flutter pub get
-
       - name: Corregir compatibilidad y preparar actualización
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('lib/main.dart')
-          s = path.read_text()
-          s = s.replace('AndroidNotificationImportance.low', 'AndroidNotificationImportance.normal')
-          path.write_text(s)
+          path = Path('lib/main.dart'); s = path.read_text().replace('AndroidNotificationImportance.low', 'AndroidNotificationImportance.normal'); path.write_text(s)
           PY
           dart fix --apply
-
       - name: Formatear y verificar código
         run: |
           dart format lib test
           dart format --output=none --set-exit-if-changed lib test
-
       - name: Analizar código sin tolerar errores ni warnings
         run: flutter analyze --fatal-warnings --no-fatal-infos
-
       - name: Ejecutar pruebas
         run: flutter test
-
       - name: Verificar configuración Android
         run: |
           grep -q 'compileSdk = 36' android/app/build.gradle.kts
@@ -130,20 +91,17 @@ jobs:
           grep -q 'REQUEST_INSTALL_PACKAGES' android/app/src/main/AndroidManifest.xml
           grep -q 'FOREGROUND_SERVICE_SPECIAL_USE' android/app/src/main/AndroidManifest.xml
           grep -q 'de.julianassmann.flutter_background.IsolateHolderService' android/app/src/main/AndroidManifest.xml
-          echo "Configuración Android verificada: compileSdk 36, NDK 27, minSdk 23 y servicio de segundo plano"
-
-      - name: Verificar versión y conectividad TV
+      - name: Verificar versión 1.2.4 y TV exclusiva
         run: |
-          grep -q "appVersion = '1.2.3+123'" lib/main.dart
+          grep -q "appVersion = '1.2.4+124'" lib/main.dart
           grep -q 'github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json' lib/main.dart
-          grep -q "client.userAgent = 'Billares-Don-Miguel/1.2.3'" lib/main.dart
+          grep -q "client.userAgent = 'Billares-Don-Miguel/1.2.4'" lib/main.dart
           grep -q "com.billaresdonmiguel/tv_cast" lib/main.dart
           grep -q "ACTION_CAST_SETTINGS" android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
-          echo "Versión 1.2.3+123 y conectividad TV verificadas"
-
+          grep -q "Pantalla exclusiva para TV" lib/main.dart
+          echo "Versión 1.2.4+124 y TV exclusiva verificadas"
       - name: Compilar APK release
         run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
-
       - name: Verificar APK generado
         run: |
           test -s build/app/outputs/flutter-apk/app-release.apk
@@ -151,51 +109,24 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk "dist/Billares-Don-Miguel-v${BUILD_NAME}-build${BUILD_NUMBER}-run${{ github.run_number }}.apk"
           cp build/app/outputs/flutter-apk/app-release.apk "dist/Billares-Don-Miguel-latest.apk"
           sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
-
       - name: Actualizar manifiesto público de actualización sin conflictos
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
+        env: { GH_TOKEN: ${{ github.token }} }
         run: |
           set -euo pipefail
           cat > /tmp/update.json <<EOF
-          {
-            "version": "${BUILD_NAME}+${BUILD_NUMBER}",
-            "downloadUrl": "https://github.com/anparamo25-sketch/Billares-Don-Miguel-/releases/latest/download/Billares-Don-Miguel-latest.apk"
-          }
+          {"version":"${BUILD_NAME}+${BUILD_NUMBER}","downloadUrl":"https://github.com/anparamo25-sketch/Billares-Don-Miguel-/releases/latest/download/Billares-Don-Miguel-latest.apk"}
           EOF
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
+          git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           for attempt in 1 2 3 4 5; do
-            echo "Publicación de update.json: intento ${attempt}/5"
-            git fetch origin main
-            git checkout -B main origin/main
-            cp /tmp/update.json update.json
-            git add update.json
-
-            if git diff --cached --quiet; then
-              echo "update.json ya contiene la versión ${BUILD_NAME}+${BUILD_NUMBER}."
-              break
-            fi
-
+            git fetch origin main; git checkout -B main origin/main; cp /tmp/update.json update.json; git add update.json
+            if git diff --cached --quiet; then break; fi
             git commit -m "chore: publish update manifest ${BUILD_NAME}+${BUILD_NUMBER}"
-
-            if git push origin HEAD:main; then
-              echo "update.json publicado correctamente."
-              break
-            fi
-
-            echo "Push rechazado por cambios concurrentes; se vuelve a sincronizar."
+            if git push origin HEAD:main; then break; fi
             git reset --hard origin/main
-            if [ "$attempt" -eq 5 ]; then
-              echo "ERROR: no fue posible publicar update.json después de 5 intentos."
-              exit 1
-            fi
+            if [ "$attempt" -eq 5 ]; then exit 1; fi
             sleep 2
           done
-
       - name: Publicar APK como artefacto
         uses: actions/upload-artifact@v4
         with:
@@ -203,7 +134,6 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 30
-
       - name: Publicar release para actualizaciones
         uses: softprops/action-gh-release@v2
         with:
