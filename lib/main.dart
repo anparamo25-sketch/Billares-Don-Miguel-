@@ -9,13 +9,75 @@ import 'package:flutter_background/flutter_background.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const String appVersion = '1.2.1+121';
+const String appVersion = '1.2.6+126';
 const String defaultPassword = '1234';
-const String updateManifestUrl = 'https://raw.githubusercontent.com/anparamo25-sketch/Billares-Don-Miguel-/main/update.json';
+const String updateManifestUrl = 'https://github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json';
 const Map<int, double> tableRates = <int, double>{1: 120, 2: 120, 3: 100, 4: 100, 5: 70};
 
 enum TableStatus { available, playing, pending }
 
+
+RawDatagramSocket? _billaresMdnsSocket;
+Future<String?> _billaresLocalIp() async {
+  try {
+    final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
+    for (final network in interfaces) {
+      for (final address in network.addresses) {
+        final parts = address.address.split('.').map(int.tryParse).whereType<int>().toList();
+        final privateIpv4 = parts.length == 4 && (parts[0] == 10 || (parts[0] == 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] == 192 && parts[1] == 168));
+        if (privateIpv4 && !address.isLoopback && !address.isLinkLocal && !address.isMulticast) return address.address;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+Future<void> _answerBillaresMdns(RawDatagramSocket socket, Datagram datagram) async {
+  try {
+    final query = datagram.data;
+    if (query.length < 12) return;
+    final questions = (query[4] << 8) | query[5];
+    var offset = 12;
+    var match = false;
+    for (var i = 0; i < questions; i++) {
+      final labels = <String>[];
+      while (offset < query.length) {
+        final length = query[offset++];
+        if (length == 0) break;
+        if (length > 63 || offset + length > query.length) return;
+        labels.add(String.fromCharCodes(query.sublist(offset, offset + length)));
+        offset += length;
+      }
+      if (offset + 4 > query.length) return;
+      final type = (query[offset] << 8) | query[offset + 1];
+      offset += 4;
+      if (labels.join('.').toLowerCase() == 'billaresdonmiguel.local' && (type == 1 || type == 255)) match = true;
+    }
+    if (!match) return;
+    final ip = await _billaresLocalIp();
+    if (ip == null) return;
+    final octets = ip.split('.').map(int.parse).toList();
+    final response = <int>[];
+    response.addAll(query.sublist(0, 2));
+    response.addAll(<int>[0x84, 0, 0, 0, 0, 1, 0, 0, 0, 120, 0, 4]);
+    response.addAll(query.sublist(12, offset));
+    response.addAll(<int>[0xC0, 0x0C, 0, 1, 0, 1, 0, 0, 0, 120, 0, 4]);
+    response.addAll(octets);
+    socket.send(response, datagram.address, datagram.port);
+  } catch (_) {}
+}
+Future<void> _startBillaresMdns() async {
+  try {
+    _billaresMdnsSocket?.close();
+    final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 5353, reuseAddress: true, reusePort: true);
+    _billaresMdnsSocket = socket;
+    socket.joinMulticast(InternetAddress('224.0.0.251'));
+    socket.listen((event) {
+      if (event != RawSocketEvent.read) return;
+      final datagram = socket.receive();
+      if (datagram != null) _answerBillaresMdns(socket, datagram);
+    });
+  } catch (_) {}
+}
 class BillTable {
   BillTable(this.number, this.rate);
   final int number;
@@ -62,8 +124,9 @@ class BillTable {
 }
 
 class HistoryEntry {
-  HistoryEntry({required this.table, required this.start, required this.end, required this.seconds, required this.amount});
+  HistoryEntry({required this.table, required this.start, required this.end, required this.seconds, required this.amount, DateTime? workDate}) : workDate = DateTime((workDate ?? end).year, (workDate ?? end).month, (workDate ?? end).day);
   final int table;
+  final DateTime workDate;
   final DateTime start;
   final DateTime end;
   final int seconds;
@@ -75,6 +138,7 @@ class HistoryEntry {
         'end': end.toIso8601String(),
         'seconds': seconds,
         'amount': amount,
+        'workDate': workDate.toIso8601String(),
       };
 
   factory HistoryEntry.fromMap(Map<String, dynamic> map) => HistoryEntry(
@@ -83,6 +147,7 @@ class HistoryEntry {
         end: DateTime.parse(map['end'] as String),
         seconds: (map['seconds'] as num).toInt(),
         amount: (map['amount'] as num).toDouble(),
+        workDate: DateTime.tryParse(map['workDate'] as String? ?? map['end'] as String),
       );
 }
 
@@ -219,12 +284,16 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   final TextEditingController newPassword = TextEditingController();
   final TextEditingController confirmPassword = TextEditingController();
   List<HistoryEntry> history = <HistoryEntry>[];
-  HttpServer? server;
-  Timer? ticker;
-  String? lanIp;
-  int tab = 0;
+Timer? ticker;
+int tab = 0;
   bool checkingUpdate = false;
   bool backgroundStarted = false;
+  bool workdayActive = false;
+  DateTime? workdayOpenedAt;
+  DateTime? workdayClosedAt;
+  double workdayGenerated = 0;
+  double workdayCashClose = 0;
+  int workdayGames = 0;
 
   @override
   void initState() {
@@ -253,7 +322,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         androidConfig: const FlutterBackgroundAndroidConfig(
           notificationTitle: 'Billares Don Miguel',
           notificationText: 'CENTRAL activo en segundo plano',
-          notificationImportance: AndroidNotificationImportance.low,
+          notificationImportance: AndroidNotificationImportance.normal,
           enableWifiLock: true,
         ),
       );
@@ -277,6 +346,14 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
 
   Future<void> loadData() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
+    workdayActive = prefs.getBool('workday_active') ?? false;
+    final String? opened = prefs.getString('workday_opened_at');
+    final String? closed = prefs.getString('workday_closed_at');
+    workdayOpenedAt = opened == null ? null : DateTime.tryParse(opened);
+    workdayClosedAt = closed == null ? null : DateTime.tryParse(closed);
+    workdayGenerated = prefs.getDouble('workday_generated') ?? 0;
+    workdayCashClose = prefs.getDouble('workday_cash_close') ?? 0;
+    workdayGames = prefs.getInt('workday_games') ?? 0;
     final String? rawHistory = prefs.getString('history');
     final DateTime cutoff = DateTime.now().subtract(const Duration(days: 7));
     if (rawHistory != null && rawHistory.isNotEmpty) {
@@ -311,47 +388,159 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     await prefs.setString('history', jsonEncode(history.map((HistoryEntry e) => e.toMap()).toList()));
   }
 
+  Future<void> saveWorkday() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('workday_active', workdayActive);
+    if (workdayOpenedAt != null) {
+      await prefs.setString('workday_opened_at', workdayOpenedAt!.toIso8601String());
+    } else {
+      await prefs.remove('workday_opened_at');
+    }
+    if (workdayClosedAt != null) {
+      await prefs.setString('workday_closed_at', workdayClosedAt!.toIso8601String());
+    } else {
+      await prefs.remove('workday_closed_at');
+    }
+    await prefs.setDouble('workday_generated', workdayGenerated);
+    await prefs.setDouble('workday_cash_close', workdayCashClose);
+    await prefs.setInt('workday_games', workdayGames);
+  }
+
+  Future<void> openWorkday() async {
+    if (workdayActive) return;
+    setState(() {
+      workdayActive = true;
+      workdayOpenedAt = DateTime.now();
+      workdayClosedAt = null;
+      workdayGenerated = 0;
+      workdayCashClose = 0;
+      workdayGames = 0;
+    });
+    await saveWorkday();
+  }
+
+  Future<void> closeWorkday() async {
+    if (!workdayActive) return;
+    final TextEditingController cashController = TextEditingController();
+    final double generated = workdayGenerated;
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Cerrar día'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+          Text('Juegos: $workdayGames'),
+          Text('Total generado: ${money(generated)}'),
+          const SizedBox(height: 12),
+          TextField(controller: cashController, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Efectivo físico al cierre', prefixText: 'C\$ ')),
+        ]),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(context, double.tryParse(cashController.text.replaceAll(',', '.')) != null), child: const Text('Registrar cierre')),
+        ],
+      ),
+    );
+    final double? cash = double.tryParse(cashController.text.replaceAll(',', '.'));
+    cashController.dispose();
+    if (confirmed != true || cash == null) return;
+    setState(() {
+      workdayActive = false;
+      workdayClosedAt = DateTime.now();
+      workdayCashClose = cash;
+    });
+    await saveWorkday();
+  }
+
   Future<void> saveTables() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString('tables', jsonEncode(tableList.map((BillTable t) => t.toMap()).toList()));
   }
 
-  Future<void> startLanServer() async {
-    try {
-      server = await HttpServer.bind(InternetAddress.anyIPv4, 8080, shared: true);
-      final List<NetworkInterface> interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4, includeLoopback: false);
-      for (final NetworkInterface networkInterface in interfaces) {
-        for (final InternetAddress address in networkInterface.addresses) {
-          if (!address.isLoopback) {
-            lanIp = address.address;
-            break;
-          }
-        }
-        if (lanIp != null) break;
-      }
-      server!.listen(handleRequest);
-      if (mounted) setState(() {});
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo iniciar el servidor LAN en el puerto 8080')));
-      }
-    }
-  }
 
   Future<void> handleRequest(HttpRequest request) async {
-    request.response.headers.set('Access-Control-Allow-Origin', '*');
-    request.response.headers.set('Cache-Control', 'no-store');
-    if (request.uri.path == '/api/state') {
-      request.response.headers.contentType = ContentType.json;
-      request.response.write(jsonEncode(stateMap()));
-    } else {
-      request.response.headers.contentType = ContentType.html;
-      request.response.write(tvHtml);
+    final HttpResponse response = request.response;
+    response.headers.set('Access-Control-Allow-Origin', '*');
+    response.headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Cache-Control');
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Connection', 'keep-alive');
+    if (request.method == 'OPTIONS') {
+      response.statusCode = HttpStatus.noContent;
+      await response.close();
+      return;
     }
-    await request.response.close();
+    if (request.uri.path == '/health') {
+      response.headers.contentType = ContentType.json;
+      final String body = jsonEncode(<String, dynamic>{'ok': true, 'app': 'Billares Don Miguel', 'version': appVersion});
+      response.headers.contentLength = utf8.encode(body).length;
+      response.write(body);
+    } else if (request.uri.path == '/api/state') {
+      response.headers.contentType = ContentType.json;
+      final String body = jsonEncode(stateMap());
+      response.headers.contentLength = utf8.encode(body).length;
+      response.write(body);
+    } else if (request.uri.path == '/tv' || request.uri.path == '/') {
+      response.headers.contentType = ContentType.html;
+      response.headers.contentLength = utf8.encode(tvHtml).length;
+      response.write(tvHtml);
+    } else {
+      response.statusCode = HttpStatus.notFound;
+      response.headers.contentType = ContentType.text;
+      response.write('Not found');
+    }
+    await response.close();
   }
 
-  Map<String, dynamic> stateMap() => <String, dynamic>{
+  
+  HttpServer? server;
+  String? lanIp;
+  int? lanPort;
+  Future<void> startLanServer() async {
+    if (server != null) return;
+    try {
+      try {
+        server = await HttpServer.bind(InternetAddress.anyIPv4, 80, shared: true);
+        lanPort = 80;
+      } catch (_) {
+        server = await HttpServer.bind(InternetAddress.anyIPv4, 8080, shared: true);
+        lanPort = 8080;
+      }
+      lanIp = await _billaresLocalIp();
+      server!.listen(handleRequest, onError: (_) {});
+      await _startBillaresMdns();
+      if (mounted) setState(() {});
+    } catch (_) {
+      server = null;
+      lanPort = null;
+      if (mounted) setState(() {});
+    }
+  }
+  Future<void> showTvConnection() async {
+    final int port = lanPort ?? 80;
+    final String url = port == 80 ? 'http://billaresdonmiguel.local/tv' : 'http://billaresdonmiguel.local:$port/tv';
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Pantalla exclusiva para TV'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+            const Text('La TV mostrará solamente las mesas. La administración continúa funcionando de forma independiente.'),
+            const SizedBox(height: 12),
+            SelectableText(url, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            FilledButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: url)); if (dialogContext.mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Dirección de TV copiada'))); }, icon: const Icon(Icons.copy), label: const Text('Copiar dirección')),
+            const SizedBox(height: 8),
+            const Text('Para la pantalla exclusiva utiliza esta dirección en el navegador de la TV. No uses Duplicar pantalla/Miracast.', style: TextStyle(fontSize: 12)),
+          ]),
+        ),
+        actions: <Widget>[TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cerrar'))],
+      ),
+    );
+  }
+  String get tvHtml => "<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Billares Don Miguel - TV</title><style>*{box-sizing:border-box}body{margin:0;background:#05070b;color:#fff;font-family:Arial,sans-serif}header{padding:18px;text-align:center;background:#fff;border-bottom:3px solid #1557c0}h1{margin:0;font-size:clamp(28px,4vw,46px);color:#1557c0;text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;padding:22px}.card{border-radius:18px;padding:22px;border:3px solid #64748b;min-height:205px}.green{background:#103b22;border-color:#22c55e}.red{background:#511b1b;border-color:#ef4444}.yellow{background:#56490a;border-color:#eab308}.name{font-size:clamp(25px,3vw,38px);font-weight:900}.status{font-size:clamp(18px,2vw,25px);font-weight:800}.line{margin:8px 0;font-size:clamp(15px,1.6vw,20px)}.money{margin-top:14px;font-size:clamp(25px,2.7vw,36px);font-weight:900}</style></head><body><header><h1>Billares Don Miguel</h1></header><main id=\"grid\" class=\"grid\"></main><script>function money(n){return 'C&#36; '+Number(n||0).toFixed(2)}async function tick(){try{var r=await fetch('/api/state?ts='+Date.now(),{cache:'no-store'});var d=await r.json();document.getElementById('grid').innerHTML=(d.tables||[]).map(function(t){var c=t.status==='Disponible'?'green':t.status==='En juego'?'red':'yellow';return '<section class=\"card '+c+'\"><div class=\"name\">Mesa '+t.number+'</div><div class=\"status\">'+t.status+'</div><div class=\"line\">Inicio: '+(t.start||'—')+'</div><div class=\"line\">Finalización: '+(t.end||'—')+'</div><div class=\"line\">Tiempo jugado: '+(t.elapsed||'00:00:00')+'</div><div class=\"money\">'+money(t.amount)+'</div></section>'}).join('')}catch(e){}}tick();setInterval(tick,1000);</script></body></html>";
+
+Map<String, dynamic> stateMap() => <String, dynamic>{
         'app': 'Billares Don Miguel',
         'version': appVersion,
         'time': clock(DateTime.now()),
@@ -366,11 +555,6 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
             }).toList(),
       };
 
-  String get tvHtml => r'''<!doctype html>
-<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Billares Don Miguel</title>
-<style>body{margin:0;background:#000;color:#fff;font-family:Arial,sans-serif}header{padding:20px;text-align:center;background:#050505;position:sticky;top:0;border-bottom:1px solid #222}h1{margin:0;font-size:30px}.clock{font-size:20px;margin-top:6px;color:#d9f99d}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;padding:22px}.card{border-radius:18px;padding:22px;background:#151515;border:2px solid #444;box-shadow:0 8px 30px #000}.card.green{background:#123d24;border-color:#36d76b}.card.red{background:#541b1b;border-color:#ff5252}.card.yellow{background:#5a4a08;border-color:#f5c542}.name{font-size:28px;font-weight:800}.status{margin:10px 0;font-size:20px;font-weight:700}.line{margin:8px 0;color:#f0f7f2}.money{font-size:30px;font-weight:800;margin-top:14px}</style></head>
-<body><header><h1>BILLARES DON MIGUEL</h1><div id="clock" class="clock">Conectando...</div></header><main id="grid" class="grid"></main>
-<script>function money(n){return 'C$ '+Number(n).toFixed(2)}function render(d){document.getElementById('clock').textContent=d.time;document.getElementById('grid').innerHTML=d.tables.map(function(t){var c=t.status==='Disponible'?'green':t.status==='En juego'?'red':'yellow';return '<section class="card '+c+'"><div class="name">Mesa '+t.number+'</div><div class="status">'+t.status+'</div><div class="line">Inicio: '+(t.start||'—')+'</div><div class="line">Finalización: '+(t.end||'—')+'</div><div class="line">Tiempo jugado: '+t.elapsed+'</div><div class="money">'+money(t.amount)+'</div></section>'}).join('')}async function tick(){try{var r=await fetch('/api/state?x='+Date.now());render(await r.json())}catch(e){document.getElementById('clock').textContent='Sin conexión con CENTRAL'}}tick();setInterval(tick,1000)</script></body></html>''';
 
   Future<void> startGame(BillTable table) async {
     if (table.status != TableStatus.available) return;
@@ -395,9 +579,13 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
 
   Future<void> collect(BillTable table) async {
     if (table.status != TableStatus.pending || table.start == null || table.end == null) return;
-    final HistoryEntry entry = HistoryEntry(table: table.number, start: table.start!, end: table.end!, seconds: table.end!.difference(table.start!).inSeconds, amount: table.amount);
+    final HistoryEntry entry = HistoryEntry(table: table.number, start: table.start!, end: table.end!, seconds: table.end!.difference(table.start!).inSeconds, amount: table.amount, workDate: workdayOpenedAt ?? table.end!);
     setState(() {
       history.add(entry);
+      if (workdayActive) {
+        workdayGenerated += table.amount;
+        workdayGames += 1;
+      }
       table.status = TableStatus.available;
       table.start = null;
       table.end = null;
@@ -405,47 +593,9 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     });
     await saveHistory();
     await saveTables();
+    await saveWorkday();
   }
 
-  Future<void> showTvConnection() async {
-    if (lanIp == null) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Esperando la conexión LAN de CENTRAL...')));
-      return;
-    }
-    final String url = 'http://$lanIp:8080/tv';
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('Conectar televisor'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            const Text('El botón anterior abría el navegador del mismo dispositivo. Esta versión ya no hace eso.'),
-            const SizedBox(height: 12),
-            const Text('En el navegador del televisor, conectado a la misma Wi‑Fi, abre esta dirección:'),
-            const SizedBox(height: 12),
-            SelectableText(url, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: url));
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dirección de TV copiada')));
-              },
-              icon: const Icon(Icons.copy),
-              label: const Text('Copiar dirección'),
-            ),
-            const SizedBox(height: 8),
-            const Text('Una vez abierta, la TV queda conectada a CENTRAL y se actualiza automáticamente cada segundo.'),
-          ],
-        ),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
-        ],
-      ),
-    );
-  }
 
   int buildNumber(String version) {
     final String value = version.split('+').last.trim();
@@ -457,7 +607,8 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     setState(() => checkingUpdate = true);
     HttpClient? client;
     try {
-      client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
+      client.userAgent = 'Billares-Don-Miguel/1.2.6';
       final HttpClientRequest request = await client.getUrl(Uri.parse('$updateManifestUrl?x=${DateTime.now().millisecondsSinceEpoch}'));
       request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
       final HttpClientResponse response = await request.close();
@@ -489,23 +640,32 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       if (mounted) setState(() => checkingUpdate = false);
     }
   }
-
   Future<void> downloadAndInstall(String url) async {
     HttpClient? client;
     try {
       if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preparando actualización...')));
+      final bool installPermission = await ApkInstall().onCheckInstallApkPermission();
+      if (!installPermission) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Activa el permiso para instalar aplicaciones desconocidas y vuelve a pulsar Actualizar.')));
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Descargando actualización...')));
       final Directory directory = await getApplicationDocumentsDirectory();
       final String path = '${directory.path}/billares-don-miguel-update.apk';
-      client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
-      final HttpClientResponse response = await (await client.getUrl(Uri.parse(url))).close();
-      if (response.statusCode != 200) throw const HttpException('Descarga fallida');
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
+      client.userAgent = 'Billares-Don-Miguel/1.2.6';
+      final HttpClientRequest request = await client.getUrl(Uri.parse(url));
+      final HttpClientResponse response = await request.close();
+      if (response.statusCode != HttpStatus.ok) throw HttpException('HTTP ${response.statusCode}');
       final File file = File(path);
       final IOSink sink = file.openWrite();
       await response.pipe(sink);
       await sink.flush();
       await sink.close();
-      await ApkInstall().onInstallApk(path);
+      if (!await file.exists() || await file.length() < 1024 * 1024) throw const HttpException('APK inválido o incompleto');
+      final bool installStarted = await ApkInstall().onInstallApk(path);
+      if (!installStarted && mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Android no inició el instalador. Verifica el permiso de instalación.')));
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo descargar o iniciar la instalación de la actualización.')));
     } finally {
@@ -595,67 +755,119 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   Widget tableCard(BillTable table) {
     final double amount = table.status == TableStatus.playing ? table.liveAmount : table.amount;
     final String buttonText = table.status == TableStatus.available ? 'Iniciar' : table.status == TableStatus.playing ? 'Finalizar' : 'Cobrar';
-    final Future<void> Function() action = table.status == TableStatus.available ? () => startGame(table) : table.status == TableStatus.playing ? () => finishGame(table) : () => collect(table);
+    final Future<void> Function()? action = table.status == TableStatus.available
+        ? (workdayActive ? () => startGame(table) : null)
+        : table.status == TableStatus.playing
+            ? () => finishGame(table)
+            : () => collect(table);
     return Card(
-      elevation: 3,
+      elevation: 4,
       color: statusColor(table.status),
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-          Row(children: <Widget>[
-            Expanded(child: Text('Mesa ${table.number}', style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold, color: statusTextColor(table.status)))),
-            Chip(label: Text(table.statusText, style: TextStyle(color: statusTextColor(table.status))), avatar: CircleAvatar(backgroundColor: statusTextColor(table.status), radius: 6)),
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+            Expanded(child: Text('Mesa ${table.number}', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: statusTextColor(table.status)))),
+            Flexible(child: Align(alignment: Alignment.topRight, child: Chip(label: Text(table.statusText, overflow: TextOverflow.ellipsis, style: TextStyle(color: statusTextColor(table.status))), avatar: CircleAvatar(backgroundColor: statusTextColor(table.status), radius: 6)))),
           ]),
           Divider(color: statusTextColor(table.status).withValues(alpha: 0.35)),
-          Text('Tarifa fija: ${money(table.rate)} / hora', style: TextStyle(color: statusTextColor(table.status))),
-          const SizedBox(height: 8),
+          Text('Tarifa fija: ${money(table.rate)} / hora', style: TextStyle(color: statusTextColor(table.status), fontWeight: FontWeight.w600)),
+          const SizedBox(height: 7),
           Text('Inicio: ${table.start == null ? '—' : clock(table.start!)}', style: TextStyle(color: statusTextColor(table.status))),
           Text('Finalización: ${table.end == null ? '—' : clock(table.end!)}', style: TextStyle(color: statusTextColor(table.status))),
           Text('Tiempo jugado: ${duration(table.elapsedSeconds)}', style: TextStyle(color: statusTextColor(table.status))),
-          const SizedBox(height: 8),
-          Text(money(amount), style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: statusTextColor(table.status))),
-          const SizedBox(height: 12),
-          SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: action, icon: Icon(table.status == TableStatus.playing ? Icons.stop : Icons.play_arrow), label: Text(buttonText))),
+          const Spacer(),
+          Text(money(amount), style: TextStyle(fontSize: 27, fontWeight: FontWeight.bold, color: statusTextColor(table.status))),
+          const SizedBox(height: 10),
+          SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: action, icon: Icon(table.status == TableStatus.playing ? Icons.stop : table.status == TableStatus.pending ? Icons.payments : Icons.play_arrow), label: Text(buttonText))),
+          if (table.status == TableStatus.available && !workdayActive) const Padding(padding: EdgeInsets.only(top: 5), child: Center(child: Text('Abra el día para iniciar partidas', style: TextStyle(fontSize: 11)))),
         ]),
       ),
     );
   }
 
-  Widget dashboard() => Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-          Row(children: <Widget>[
-            Expanded(child: Text('Estado de mesas', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold))),
-            if (lanIp != null) Chip(label: Text('LAN: $lanIp:8080')),
-          ]),
-          const SizedBox(height: 8),
-          if (lanIp != null) Text('TV: http://$lanIp:8080/tv', style: const TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 10),
-          SizedBox(width: double.infinity, child: FilledButton.icon(onPressed: showTvConnection, icon: const Icon(Icons.tv), label: const Text('Conectar televisor'))),
-          const SizedBox(height: 12),
-          Expanded(child: GridView.builder(
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 460, mainAxisExtent: 330, crossAxisSpacing: 14, mainAxisSpacing: 14),
-            itemCount: tableList.length,
-            itemBuilder: (_, int index) => tableCard(tableList[index]),
-          )),
-        ]),
+  Widget dashboard() => LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final bool wide = constraints.maxWidth >= 800;
+          final int columns = constraints.maxWidth >= 1200 ? 3 : constraints.maxWidth >= 700 ? 2 : 1;
+          final double cardHeight = columns == 1 ? 390 : 350;
+          return Padding(
+            padding: EdgeInsets.all(wide ? 22 : 14),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+                  Text('Inicio', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  Text(workdayActive ? 'Jornada activa • ${date(workdayOpenedAt ?? DateTime.now())}' : workdayClosedAt != null ? 'Día cerrado • ${date(workdayClosedAt!)}' : 'Sin jornada abierta'),
+                ])),
+                Flexible(child: Chip(avatar: Icon(Icons.wifi, size: 18, color: lanIp != null ? Colors.green : Colors.red), label: Text(lanIp != null ? 'LAN conectado • $lanIp' : 'LAN no disponible', overflow: TextOverflow.ellipsis))),
+              ]),
+              const SizedBox(height: 12),
+              Card(child: Padding(padding: const EdgeInsets.all(14), child: Wrap(spacing: 10, runSpacing: 10, crossAxisAlignment: WrapCrossAlignment.center, children: <Widget>[
+                Chip(avatar: Icon(Icons.circle, size: 12, color: workdayActive ? Colors.green : Colors.grey), label: Text(workdayActive ? 'Día abierto' : 'Día cerrado')),
+                if (workdayActive) Text('Apertura: ${clock(workdayOpenedAt!)}'),
+                if (workdayActive) Text('Juegos: $workdayGames'),
+                if (workdayActive) Text('Generado: ${money(workdayGenerated)}'),
+                if (!workdayActive && workdayClosedAt != null) Text('Cierre: ${clock(workdayClosedAt!)}'),
+                if (!workdayActive && workdayClosedAt != null) Text('Efectivo físico: ${money(workdayCashClose)}'),
+                FilledButton.icon(onPressed: workdayActive ? closeWorkday : openWorkday, icon: Icon(workdayActive ? Icons.lock : Icons.lock_open), label: Text(workdayActive ? 'Cerrar día' : 'Abrir día')),
+              ]))),
+              const SizedBox(height: 10),
+              Wrap(spacing: 10, runSpacing: 10, children: <Widget>[
+                FilledButton.icon(onPressed: showTvConnection, icon: const Icon(Icons.tv), label: const Text('Mostrar en TV')),
+                if (lanIp != null) OutlinedButton.icon(onPressed: () async { await Clipboard.setData(ClipboardData(text: 'http://$lanIp:8080/tv')); if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dirección de TV copiada'))); }, icon: const Icon(Icons.copy), label: const Text('Copiar receptor TV')),
+              ]),
+              const SizedBox(height: 14),
+              Row(children: <Widget>[
+                Expanded(child: Text('Mesas', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold))),
+                const Text('🟢 Libre   🔴 En juego   🟡 Pendiente'),
+              ]),
+              const SizedBox(height: 8),
+              Expanded(child: GridView.builder(
+                padding: EdgeInsets.zero,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: columns, mainAxisExtent: cardHeight, crossAxisSpacing: 14, mainAxisSpacing: 14),
+                itemCount: tableList.length,
+                itemBuilder: (_, int index) => tableCard(tableList[index]),
+              )),
+            ]),
+          );
+        },
       );
 
   Widget historyPage() {
-    final List<HistoryEntry> items = List<HistoryEntry>.from(history)..sort((HistoryEntry a, HistoryEntry b) => b.end.compareTo(a.end));
-    return Column(children: <Widget>[
-      Card(margin: const EdgeInsets.fromLTRB(16, 16, 16, 8), child: ListTile(leading: const Icon(Icons.today), title: const Text('Total de hoy'), trailing: Text(money(todayTotal), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)))),
-      Expanded(child: items.isEmpty
-          ? const Center(child: Text('No hay movimientos en los últimos 7 días.'))
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: items.length,
-              itemBuilder: (_, int index) {
-                final HistoryEntry e = items[index];
-                return Card(child: ListTile(leading: CircleAvatar(child: Text('${e.table}')), title: Text('Mesa ${e.table} • ${money(e.amount)}'), subtitle: Text('${date(e.end)} • ${clock(e.start)} - ${clock(e.end)} • ${duration(e.seconds)}')));
-              },
-            )),
-    ]);
+    final Map<String, List<HistoryEntry>> groups = <String, List<HistoryEntry>>{};
+    for (final HistoryEntry entry in history) {
+      final String key = '${entry.workDate.year}-${entry.workDate.month.toString().padLeft(2, '0')}-${entry.workDate.day.toString().padLeft(2, '0')}';
+      groups.putIfAbsent(key, () => <HistoryEntry>[]).add(entry);
+    }
+    final List<String> keys = groups.keys.toList()..sort((String a, String b) => b.compareTo(a));
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: <Widget>[
+        Card(child: ListTile(leading: const Icon(Icons.today), title: const Text('Últimos 7 días'), subtitle: const Text('Movimientos organizados por fecha de trabajo'), trailing: Text(money(todayTotal), style: const TextStyle(fontSize: 19, fontWeight: FontWeight.bold)))),
+        if (keys.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Center(child: Text('No hay movimientos en los últimos 7 días.'))),
+        ...keys.map((String key) {
+          final List<HistoryEntry> items = groups[key]!..sort((HistoryEntry a, HistoryEntry b) => b.end.compareTo(a.end));
+          final HistoryEntry first = items.last;
+          final HistoryEntry last = items.first;
+          final double total = items.fold<double>(0, (double sum, HistoryEntry e) => sum + e.amount);
+          final DateTime day = first.workDate;
+          final bool isCurrent = workdayActive && workdayOpenedAt != null && day.year == workdayOpenedAt!.year && day.month == workdayOpenedAt!.month && day.day == workdayOpenedAt!.day;
+          return Card(
+            margin: const EdgeInsets.only(top: 12),
+            child: ExpansionTile(
+              initiallyExpanded: isCurrent,
+              title: Text(date(day), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              subtitle: Text('Apertura: ${isCurrent ? clock(workdayOpenedAt!) : clock(first.start)} • ${items.length} juegos • Generado: ${money(total)}'),
+              children: <Widget>[
+                Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 10), child: Align(alignment: Alignment.centerLeft, child: Text(workdayClosedAt != null && day.year == workdayClosedAt!.year && day.month == workdayClosedAt!.month && day.day == workdayClosedAt!.day ? 'Cierre: ${clock(workdayClosedAt!)} • Efectivo físico: ${money(workdayCashClose)}' : 'Último movimiento: ${clock(last.end)}'))),
+                ...items.map((HistoryEntry e) => ListTile(leading: CircleAvatar(child: Text('${e.table}')), title: Text('Mesa ${e.table} • ${money(e.amount)}'), subtitle: Text('${clock(e.start)} - ${clock(e.end)} • ${duration(e.seconds)}'))),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
   }
 
   void showSettings() {
@@ -663,7 +875,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       context: context,
       builder: (BuildContext context) => AlertDialog(
         title: const Text('Configuración'),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
           const Text('Tarifas fijas', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           const Text('Mesas 1 y 2: C\$120 por hora'),
@@ -672,8 +884,10 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
           const SizedBox(height: 12),
           const Text('Las tarifas no pueden modificarse desde el administrador.'),
           const SizedBox(height: 16),
-          if (lanIp != null) Text('Servidor LAN: http://$lanIp:8080/tv'),
-        ]),
+          if (lanIp != null) Text('Receptor TV: http://$lanIp:8080/tv'),
+          const SizedBox(height: 8),
+          const Text('La TV muestra únicamente la pantalla de mesas; el panel administrativo permanece en el celular.'),
+        ])),
         actions: <Widget>[
           TextButton(onPressed: changePassword, child: const Text('Cambiar contraseña')),
           TextButton(onPressed: () => checkForUpdate(), child: const Text('Buscar actualización')),
