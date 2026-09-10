@@ -1,6 +1,5 @@
 name: Billares Don Miguel - Build APK
 
-# Compilación de distribución 1.2.8+128.
 on:
   push:
     branches: [main]
@@ -13,8 +12,8 @@ permissions:
 
 env:
   FLUTTER_VERSION: 3.29.3
-  BUILD_NAME: 1.2.8
-  BUILD_NUMBER: 128
+  BUILD_NAME: 1.2.9
+  BUILD_NUMBER: 129
   MIN_SDK: 23
   COMPILE_SDK: 36
   NDK_VERSION: 27.0.12077973
@@ -60,36 +59,18 @@ jobs:
           if [ "$installed" -ne 1 ]; then echo "ERROR: No se pudo instalar NDK ${NDK_VERSION} después de 3 intentos."; exit 1; fi
       - name: Generar plataforma Android limpia
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
-      - name: Preparar fuente base para 1.2.8
+      - name: Verificar fuente TV y LAN corregida
         shell: bash
         run: |
           set -euo pipefail
           test -s lib/main.dart
-          grep -Eq "const String appVersion = '1\.2\.(6\+126|7\+127|8\+128)';" lib/main.dart
-          grep -q "const Map<int, double> tableRates" lib/main.dart
           grep -q "billaresdonmiguel.local" lib/main.dart
-          echo "Fuente base compatible verificada; se conservarán las funciones/interfaz y se aplicarán los cambios 1.2.8."
-      - name: Validar scripts 1.2.8
-        run: python3 -m py_compile scripts/rebuild_tv_1_2_6.py scripts/repair_1_2_6_generated.py scripts/validate_1_2_6_contract.py scripts/validate_1_2_7_contract.py scripts/enforce_1_2_6_source.py scripts/add_cloud_tv_sync_1_2_7.py scripts/apply_1_2_8.py
-      - name: Reconstruir TV, LAN y mDNS 1.2.6
-        run: python3 scripts/repair_1_2_6_generated.py
-      - name: Aplicar fuente final 1.2.7 base
-        run: python3 scripts/enforce_1_2_6_source.py
-      - name: Aplicar cambios finales 1.2.8
-        run: python3 scripts/apply_1_2_8.py
-      - name: Guardar fuente final 1.2.8 en repositorio
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+anparamo25-sketch@users.noreply.github.com"
-          git add lib/main.dart
-          if git diff --cached --quiet; then
-            echo "La fuente final 1.2.8 ya estaba sincronizada."
-          else
-            git commit -m "chore: sincronizar fuente final 1.2.8 [skip ci]"
-            git push origin HEAD:main
-          fi
+          grep -q "brandLogo" lib/main.dart
+          grep -q "Tiempo jugado" lib/main.dart
+          grep -q "Future<void> printReceipt(BillTable table)" lib/main.dart
+          echo "Fuente TV/LAN actual conservada; no se regenerará sobre la corrección aprobada."
+      - name: Instalar dependencias
+        run: flutter pub get
       - name: Configurar Android para LAN, Bluetooth, actualizaciones y segundo plano
         run: |
           python3 - <<'PY'
@@ -107,8 +88,6 @@ jobs:
           if 'de.julianassmann.flutter_background.IsolateHolderService' not in s: s = s.replace('    </application>', service + '\n    </application>')
           manifest.write_text(s)
           PY
-      - name: Instalar dependencias
-        run: flutter pub get
       - name: Corregir compatibilidad y preparar actualización
         run: |
           python3 - <<'PY'
@@ -136,7 +115,7 @@ jobs:
         run: python3 scripts/validate_1_2_7_contract.py
       - name: Verificar cambios 1.2.8
         run: |
-          grep -q "const String appVersion = '1.2.8+128'" lib/main.dart
+          grep -q "const String appVersion = '1.2.8+128'\|const String appVersion = '1.2.9+129'" lib/main.dart
           grep -q "print_bluetooth_thermal_plus" lib/main.dart
           grep -q "esc_pos_utils_plus" lib/main.dart
           grep -q "Future<void> printReceipt(BillTable table)" lib/main.dart
