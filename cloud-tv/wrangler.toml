@@ -1,14 +1,8 @@
-name = "billares-don-miguel-tv"
-main = "worker.js"
+name = "billaresdonmiguel"
 compatibility_date = "2026-09-01"
-
-[assets]
-directory = "./public"
+pages_build_output_dir = "./public"
 
 [[durable_objects.bindings]]
 name = "TV_STATE"
 class_name = "BillaresTvState"
-
-[[migrations]]
-tag = "v1"
-new_sqlite_classes = ["BillaresTvState"]
+script_name = "billares-don-miguel-tv-state"
