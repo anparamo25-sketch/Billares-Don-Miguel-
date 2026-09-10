@@ -1,0 +1,5 @@
+Billares Don Miguel v1.2.8+128
+
+Recibo térmico: SIN LOGO.
+El logo digitalizado se utiliza únicamente en el encabezado de la pantalla TV.
+El recibo conserva: Billares Don Miguel, mesa, hora de inicio, hora finalizada, tiempo jugado, tarifa por hora y MONTO A PAGAR.
