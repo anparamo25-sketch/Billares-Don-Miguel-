@@ -1,6 +1,6 @@
 name: Billares Don Miguel - Build APK
 
-# Compilación limpia de distribución 1.2.6+126.
+# Compilación de distribución 1.2.7+127 con TV en la nube.
 on:
   push:
     branches: [main]
@@ -13,8 +13,8 @@ permissions:
 
 env:
   FLUTTER_VERSION: 3.29.3
-  BUILD_NAME: 1.2.6
-  BUILD_NUMBER: 126
+  BUILD_NAME: 1.2.7
+  BUILD_NUMBER: 127
   MIN_SDK: 23
   COMPILE_SDK: 36
   NDK_VERSION: 27.0.12077973
@@ -60,7 +60,7 @@ jobs:
           if [ "$installed" -ne 1 ]; then echo "ERROR: No se pudo instalar NDK ${NDK_VERSION} después de 3 intentos."; exit 1; fi
       - name: Generar plataforma Android limpia
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
-      - name: Preparar versión 1.2.6
+      - name: Preparar versión 1.2.7
         shell: bash
         run: |
           set -euo pipefail
@@ -68,14 +68,14 @@ jobs:
           grep -q "const String appVersion = '1.2.6+126';" lib/main.dart
           grep -q "const Map<int, double> tableRates" lib/main.dart
           grep -q "billaresdonmiguel.local" lib/main.dart
-          echo "Fuente base 1.2.6+126 verificada; se elimina la dependencia del preparador histórico 1.2.4."
-      - name: Validar scripts 1.2.6
-        run: python3 -m py_compile scripts/rebuild_tv_1_2_6.py scripts/repair_1_2_6_generated.py scripts/validate_1_2_6_contract.py scripts/enforce_1_2_6_source.py
+          echo "Fuente base 1.2.6+126 verificada; se aplicarán las transformaciones finales 1.2.7."
+      - name: Validar scripts 1.2.7
+        run: python3 -m py_compile scripts/rebuild_tv_1_2_6.py scripts/repair_1_2_6_generated.py scripts/validate_1_2_6_contract.py scripts/enforce_1_2_6_source.py scripts/add_cloud_tv_sync_1_2_7.py
       - name: Reconstruir TV, LAN y mDNS 1.2.6
         run: python3 scripts/repair_1_2_6_generated.py
-      - name: Aplicar fuente final 1.2.6
+      - name: Aplicar fuente final 1.2.7
         run: python3 scripts/enforce_1_2_6_source.py
-      - name: Guardar fuente final 1.2.6 en repositorio
+      - name: Guardar fuente final 1.2.7 en repositorio
         shell: bash
         run: |
           set -euo pipefail
@@ -83,9 +83,9 @@ jobs:
           git config user.email "41898282+anparamo25-sketch@users.noreply.github.com"
           git add lib/main.dart
           if git diff --cached --quiet; then
-            echo "La fuente final 1.2.6 ya estaba sincronizada."
+            echo "La fuente final 1.2.7 ya estaba sincronizada."
           else
-            git commit -m "chore: sincronizar fuente final 1.2.6 [skip ci]"
+            git commit -m "chore: sincronizar fuente final 1.2.7 [skip ci]"
             git push origin HEAD:main
           fi
       - name: Configurar Android para LAN, actualizaciones y segundo plano
@@ -127,7 +127,7 @@ jobs:
           grep -q 'REQUEST_INSTALL_PACKAGES' android/app/src/main/AndroidManifest.xml
           grep -q 'FOREGROUND_SERVICE_SPECIAL_USE' android/app/src/main/AndroidManifest.xml
           grep -q 'de.julianassmann.flutter_background.IsolateHolderService' android/app/src/main/AndroidManifest.xml
-      - name: Verificar contrato funcional 1.2.6
+      - name: Verificar contrato funcional 1.2.7
         run: python3 scripts/validate_1_2_6_contract.py
       - name: Compilar APK release
         run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
@@ -148,7 +148,7 @@ jobs:
           {"version":"${BUILD_NAME}+${BUILD_NUMBER}","downloadUrl":"https://github.com/anparamo25-sketch/Billares-Don-Miguel-/releases/latest/download/Billares-Don-Miguel-latest.apk"}
           EOF
           python3 - <<'PY'
-          import base64, json, os, subprocess
+          import base64, os, subprocess
           from pathlib import Path
           content = Path('/tmp/update.json').read_bytes()
           encoded = base64.b64encode(content).decode()
