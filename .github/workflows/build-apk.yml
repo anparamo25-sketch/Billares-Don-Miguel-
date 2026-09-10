@@ -60,7 +60,7 @@ jobs:
           if [ "$installed" -ne 1 ]; then echo "ERROR: No se pudo instalar NDK ${NDK_VERSION} después de 3 intentos."; exit 1; fi
       - name: Generar plataforma Android limpia
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
-      - name: Preparar versión 1.2.7
+      - name: Preparar versión base 1.2.6
         shell: bash
         run: |
           set -euo pipefail
@@ -70,7 +70,7 @@ jobs:
           grep -q "billaresdonmiguel.local" lib/main.dart
           echo "Fuente base 1.2.6+126 verificada; se aplicarán las transformaciones finales 1.2.7."
       - name: Validar scripts 1.2.7
-        run: python3 -m py_compile scripts/rebuild_tv_1_2_6.py scripts/repair_1_2_6_generated.py scripts/validate_1_2_6_contract.py scripts/enforce_1_2_6_source.py scripts/add_cloud_tv_sync_1_2_7.py
+        run: python3 -m py_compile scripts/rebuild_tv_1_2_6.py scripts/repair_1_2_6_generated.py scripts/validate_1_2_6_contract.py scripts/validate_1_2_7_contract.py scripts/enforce_1_2_6_source.py scripts/add_cloud_tv_sync_1_2_7.py
       - name: Reconstruir TV, LAN y mDNS 1.2.6
         run: python3 scripts/repair_1_2_6_generated.py
       - name: Aplicar fuente final 1.2.7
@@ -128,7 +128,7 @@ jobs:
           grep -q 'FOREGROUND_SERVICE_SPECIAL_USE' android/app/src/main/AndroidManifest.xml
           grep -q 'de.julianassmann.flutter_background.IsolateHolderService' android/app/src/main/AndroidManifest.xml
       - name: Verificar contrato funcional 1.2.7
-        run: python3 scripts/validate_1_2_6_contract.py
+        run: python3 scripts/validate_1_2_7_contract.py
       - name: Compilar APK release
         run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
       - name: Verificar APK generado
@@ -152,31 +152,14 @@ jobs:
           from pathlib import Path
           content = Path('/tmp/update.json').read_bytes()
           encoded = base64.b64encode(content).decode()
-          current = subprocess.run([
-              'gh', 'api',
-              'repos/anparamo25-sketch/Billares-Don-Miguel-/contents/update.json',
-              '--method', 'GET',
-              '--jq', '.sha',
-          ], text=True, capture_output=True, check=True)
+          current = subprocess.run(['gh', 'api', 'repos/anparamo25-sketch/Billares-Don-Miguel-/contents/update.json', '--method', 'GET', '--jq', '.sha'], text=True, capture_output=True, check=True)
           current_sha = current.stdout.strip()
-          if not current_sha:
-              raise SystemExit('No se pudo obtener el SHA actual de update.json')
-          print(f'SHA actual de update.json: {current_sha}')
-          result = subprocess.run([
-              'gh', 'api',
-              'repos/anparamo25-sketch/Billares-Don-Miguel-/contents/update.json',
-              '--method', 'PUT',
-              '--field', 'branch=main',
-              '--field', f'message=chore: publish update manifest {os.environ["BUILD_NAME"]}+{os.environ["BUILD_NUMBER"]}',
-              '--field', f'content={encoded}',
-              '--field', f'sha={current_sha}',
-          ], text=True, capture_output=True)
+          if not current_sha: raise SystemExit('No se pudo obtener el SHA actual de update.json')
+          result = subprocess.run(['gh', 'api', 'repos/anparamo25-sketch/Billares-Don-Miguel-/contents/update.json', '--method', 'PUT', '--field', 'branch=main', '--field', f'message=chore: publish update manifest {os.environ["BUILD_NAME"]}+{os.environ["BUILD_NUMBER"]}', '--field', f'content={encoded}', '--field', f'sha={current_sha}'], text=True, capture_output=True)
           if result.returncode == 0:
               print('Manifesto de actualización publicado correctamente con el SHA actual.')
               raise SystemExit(0)
-          print(result.stdout)
-          print(result.stderr)
-          raise SystemExit(result.returncode)
+          print(result.stdout); print(result.stderr); raise SystemExit(result.returncode)
           PY
       - name: Publicar APK como artefacto
         uses: actions/upload-artifact@v4
