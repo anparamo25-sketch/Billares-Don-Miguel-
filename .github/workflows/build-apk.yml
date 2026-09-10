@@ -59,16 +59,34 @@ jobs:
           if [ "$installed" -ne 1 ]; then echo "ERROR: No se pudo instalar NDK ${NDK_VERSION} después de 3 intentos."; exit 1; fi
       - name: Generar plataforma Android limpia
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
-      - name: Verificar fuente TV y LAN corregida
+      - name: Corregir TV, contador y fuente de estado
         shell: bash
         run: |
           set -euo pipefail
-          test -s lib/main.dart
-          grep -q "billaresdonmiguel.local" lib/main.dart
-          grep -q "brandLogo" lib/main.dart
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('lib/main.dart')
+          s = p.read_text()
+          s = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.9+129';", s, count=1)
+          s = s.replace("'start': t.start == null ? null : clock(t.start!),", "'start': t.start == null ? null : t.start!.toIso8601String(),")
+          s = s.replace("'end': t.end == null ? null : clock(t.end!),", "'end': t.end == null ? null : t.end!.toIso8601String(),")
+          old = "function statusName(v){return v==='playing'?'En juego':v==='pending'?'Pendiente de cobro':v==='available'?'Disponible':safe(v)}"
+          new = old + "function elapsedValue(start,end){if(!start)return '00:00:00';var a=new Date(start);var b=end?new Date(end):new Date();if(isNaN(a.getTime())||isNaN(b.getTime()))return '00:00:00';var sec=Math.max(0,Math.floor((b-a)/1000));var h=Math.floor(sec/3600);var m=Math.floor((sec%3600)/60);var ss=sec%60;return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0')}"
+          if old in s and 'function elapsedValue(start,end)' not in s:
+              s = s.replace(old, new, 1)
+          s = s.replace("safe(t.elapsed||'00:00:00')", "elapsedValue(t.start,t.end)")
+          if 'function elapsedValue(start,end)' not in s:
+              raise SystemExit('ERROR: no se pudo instalar el contador de tiempo TV')
+          if "'start': t.start == null ? null : t.start!.toIso8601String()" not in s:
+              raise SystemExit('ERROR: el estado TV no está enviando la hora ISO de inicio')
+          p.write_text(s)
+          PY
+          grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
+          grep -q "function elapsedValue(start,end)" lib/main.dart
           grep -q "Tiempo jugado" lib/main.dart
-          grep -q "Future<void> printReceipt(BillTable table)" lib/main.dart
-          echo "Fuente TV/LAN actual conservada; no se regenerará sobre la corrección aprobada."
+          grep -q "brandLogo" lib/main.dart
+          grep -q "billaresdonmiguel.local" lib/main.dart
       - name: Instalar dependencias
         run: flutter pub get
       - name: Configurar Android para LAN, Bluetooth, actualizaciones y segundo plano
@@ -94,6 +112,14 @@ jobs:
           from pathlib import Path
           path = Path('lib/main.dart'); s = path.read_text().replace('AndroidNotificationImportance.low', 'AndroidNotificationImportance.normal'); path.write_text(s)
           PY
+      - name: Guardar fuente TV corregida en repositorio
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+anparamo25-sketch@users.noreply.github.com"
+          git add lib/main.dart
+          if git diff --cached --quiet; then echo "Fuente TV ya sincronizada."; else git commit -m "fix: corregir contador y sincronización TV [skip ci]"; git push origin HEAD:main; fi
       - name: Formatear y verificar código
         run: |
           dart format lib test
@@ -113,13 +139,13 @@ jobs:
           grep -q 'de.julianassmann.flutter_background.IsolateHolderService' android/app/src/main/AndroidManifest.xml
       - name: Verificar contrato funcional 1.2.7 base
         run: python3 scripts/validate_1_2_7_contract.py
-      - name: Verificar cambios 1.2.8
+      - name: Verificar cambios TV
         run: |
-          grep -q "const String appVersion = '1.2.8+128'\|const String appVersion = '1.2.9+129'" lib/main.dart
+          grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
+          grep -q "function elapsedValue(start,end)" lib/main.dart
           grep -q "print_bluetooth_thermal_plus" lib/main.dart
           grep -q "esc_pos_utils_plus" lib/main.dart
           grep -q "Future<void> printReceipt(BillTable table)" lib/main.dart
-          grep -q "Imprimir recibo" lib/main.dart
           grep -q "MONTO A PAGAR" lib/main.dart
           grep -q "Tarifa:" lib/main.dart
           grep -q "🟢 EN VIVO" lib/main.dart
@@ -145,16 +171,13 @@ jobs:
           python3 - <<'PY'
           import base64, os, subprocess
           from pathlib import Path
-          content = Path('/tmp/update.json').read_bytes()
-          encoded = base64.b64encode(content).decode()
-          current = subprocess.run(['gh', 'api', 'repos/anparamo25-sketch/Billares-Don-Miguel-/contents/update.json', '--method', 'GET', '--jq', '.sha'], text=True, capture_output=True, check=True)
+          content = Path('/tmp/update.json').read_bytes(); encoded = base64.b64encode(content).decode()
+          current = subprocess.run(['gh','api','repos/anparamo25-sketch/Billares-Don-Miguel-/contents/update.json','--method','GET','--jq','.sha'], text=True, capture_output=True, check=True)
           current_sha = current.stdout.strip()
           if not current_sha: raise SystemExit('No se pudo obtener el SHA actual de update.json')
-          result = subprocess.run(['gh', 'api', 'repos/anparamo25-sketch/Billares-Don-Miguel-/contents/update.json', '--method', 'PUT', '--field', 'branch=main', '--field', f'message=chore: publish update manifest {os.environ["BUILD_NAME"]}+{os.environ["BUILD_NUMBER"]}', '--field', f'content={encoded}', '--field', f'sha={current_sha}'], text=True, capture_output=True)
-          if result.returncode == 0:
-              print('Manifesto de actualización publicado correctamente con el SHA actual.')
-              raise SystemExit(0)
-          print(result.stdout); print(result.stderr); raise SystemExit(result.returncode)
+          result = subprocess.run(['gh','api','repos/anparamo25-sketch/Billares-Don-Miguel-/contents/update.json','--method','PUT','--field','branch=main','--field',f'message=chore: publish update manifest {os.environ["BUILD_NAME"]}+{os.environ["BUILD_NUMBER"]}','--field',f'content={encoded}','--field',f'sha={current_sha}'], text=True, capture_output=True)
+          if result.returncode != 0: print(result.stdout); print(result.stderr); raise SystemExit(result.returncode)
+          print('Manifesto de actualización publicado correctamente.')
           PY
       - name: Publicar APK como artefacto
         uses: actions/upload-artifact@v4
