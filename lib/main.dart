@@ -680,9 +680,8 @@ Map<String, dynamic> stateMap() => <String, dynamic>{
   }
 
   Future<void> collect(BillTable table) async {
-    if (table.start != null && table.end != null && table.amount > 0) {
-      await printReceipt(table);
-    }
+    // Cobrar debe funcionar aunque no haya impresora Bluetooth disponible.
+    // La impresión queda como acción independiente en 'Imprimir recibo'.
     if (table.status != TableStatus.pending || table.start == null || table.end == null) return;
     final HistoryEntry entry = HistoryEntry(table: table.number, start: table.start!, end: table.end!, seconds: table.end!.difference(table.start!).inSeconds, amount: table.amount, workDate: workdayOpenedAt ?? table.end!);
     setState(() {
