@@ -1,0 +1,11 @@
+name = "billares-don-miguel-tv-state"
+main = "cloud-tv/state-worker/worker.js"
+compatibility_date = "2026-09-01"
+
+[[durable_objects.bindings]]
+name = "TV_STATE"
+class_name = "BillaresTvState"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["BillaresTvState"]
