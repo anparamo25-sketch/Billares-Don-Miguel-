@@ -1,6 +1,6 @@
 name: Billares Don Miguel - Build APK
 
-# Compilación de distribución 1.2.7+127 con TV en la nube.
+# Compilación de distribución 1.2.8+128.
 on:
   push:
     branches: [main]
@@ -13,8 +13,8 @@ permissions:
 
 env:
   FLUTTER_VERSION: 3.29.3
-  BUILD_NAME: 1.2.7
-  BUILD_NUMBER: 127
+  BUILD_NAME: 1.2.8
+  BUILD_NUMBER: 128
   MIN_SDK: 23
   COMPILE_SDK: 36
   NDK_VERSION: 27.0.12077973
@@ -60,22 +60,24 @@ jobs:
           if [ "$installed" -ne 1 ]; then echo "ERROR: No se pudo instalar NDK ${NDK_VERSION} después de 3 intentos."; exit 1; fi
       - name: Generar plataforma Android limpia
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
-      - name: Preparar fuente base para 1.2.7
+      - name: Preparar fuente base para 1.2.8
         shell: bash
         run: |
           set -euo pipefail
           test -s lib/main.dart
-          grep -Eq "const String appVersion = '1\.2\.(6\+126|7\+127)';" lib/main.dart
+          grep -Eq "const String appVersion = '1\.2\.(6\+126|7\+127|8\+128)';" lib/main.dart
           grep -q "const Map<int, double> tableRates" lib/main.dart
           grep -q "billaresdonmiguel.local" lib/main.dart
-          echo "Fuente base compatible verificada; se conservarán las funciones/interfaz y se aplicará la integración Cloud TV 1.2.7."
-      - name: Validar scripts 1.2.7
-        run: python3 -m py_compile scripts/rebuild_tv_1_2_6.py scripts/repair_1_2_6_generated.py scripts/validate_1_2_6_contract.py scripts/validate_1_2_7_contract.py scripts/enforce_1_2_6_source.py scripts/add_cloud_tv_sync_1_2_7.py
+          echo "Fuente base compatible verificada; se conservarán las funciones/interfaz y se aplicarán los cambios 1.2.8."
+      - name: Validar scripts 1.2.8
+        run: python3 -m py_compile scripts/rebuild_tv_1_2_6.py scripts/repair_1_2_6_generated.py scripts/validate_1_2_6_contract.py scripts/validate_1_2_7_contract.py scripts/enforce_1_2_6_source.py scripts/add_cloud_tv_sync_1_2_7.py scripts/apply_1_2_8.py
       - name: Reconstruir TV, LAN y mDNS 1.2.6
         run: python3 scripts/repair_1_2_6_generated.py
-      - name: Aplicar fuente final 1.2.7
+      - name: Aplicar fuente final 1.2.7 base
         run: python3 scripts/enforce_1_2_6_source.py
-      - name: Guardar fuente final 1.2.7 en repositorio
+      - name: Aplicar cambios finales 1.2.8
+        run: python3 scripts/apply_1_2_8.py
+      - name: Guardar fuente final 1.2.8 en repositorio
         shell: bash
         run: |
           set -euo pipefail
@@ -83,12 +85,12 @@ jobs:
           git config user.email "41898282+anparamo25-sketch@users.noreply.github.com"
           git add lib/main.dart
           if git diff --cached --quiet; then
-            echo "La fuente final 1.2.7 ya estaba sincronizada."
+            echo "La fuente final 1.2.8 ya estaba sincronizada."
           else
-            git commit -m "chore: sincronizar fuente final 1.2.7 [skip ci]"
+            git commit -m "chore: sincronizar fuente final 1.2.8 [skip ci]"
             git push origin HEAD:main
           fi
-      - name: Configurar Android para LAN, actualizaciones y segundo plano
+      - name: Configurar Android para LAN, Bluetooth, actualizaciones y segundo plano
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -97,6 +99,8 @@ jobs:
           manifest = Path('android/app/src/main/AndroidManifest.xml'); s = manifest.read_text(); marker = '<uses-permission android:name="android.permission.INTERNET" />'
           if marker not in s:
               s = s.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">', '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />')
+          bt = '''    <uses-permission android:name="android.permission.BLUETOOTH" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />\n    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />'''
+          if 'android.permission.BLUETOOTH_CONNECT' not in s: s = s.replace(marker, marker + '\n' + bt)
           if 'android:usesCleartextTraffic=' not in s: s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
           s = s.replace('android:label="billares_don_miguel"', 'android:label="Billares Don Miguel"')
           service = '''    <service\n                android:name="de.julianassmann.flutter_background.IsolateHolderService"\n                android:exported="false"\n                android:foregroundServiceType="specialUse" />'''
@@ -126,9 +130,21 @@ jobs:
           grep -q 'minSdk = 23' android/app/build.gradle.kts
           grep -q 'REQUEST_INSTALL_PACKAGES' android/app/src/main/AndroidManifest.xml
           grep -q 'FOREGROUND_SERVICE_SPECIAL_USE' android/app/src/main/AndroidManifest.xml
+          grep -q 'BLUETOOTH_CONNECT' android/app/src/main/AndroidManifest.xml
           grep -q 'de.julianassmann.flutter_background.IsolateHolderService' android/app/src/main/AndroidManifest.xml
-      - name: Verificar contrato funcional 1.2.7
+      - name: Verificar contrato funcional 1.2.7 base
         run: python3 scripts/validate_1_2_7_contract.py
+      - name: Verificar cambios 1.2.8
+        run: |
+          grep -q "const String appVersion = '1.2.8+128'" lib/main.dart
+          grep -q "print_bluetooth_thermal_plus" lib/main.dart
+          grep -q "esc_pos_utils_plus" lib/main.dart
+          grep -q "Future<void> printReceipt(BillTable table)" lib/main.dart
+          grep -q "Imprimir recibo" lib/main.dart
+          grep -q "MONTO A PAGAR" lib/main.dart
+          grep -q "Tarifa:" lib/main.dart
+          grep -q "🟢 EN VIVO" lib/main.dart
+          grep -q "brandLogo" lib/main.dart
       - name: Compilar APK release
         run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
       - name: Verificar APK generado
