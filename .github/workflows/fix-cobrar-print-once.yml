@@ -1,0 +1,96 @@
+name: Fix Cobrar auto print
+on:
+  workflow_dispatch:
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch collect
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/main.dart')
+          s = p.read_text(encoding='utf-8')
+          old = '''  Future<void> collect(BillTable table) async {
+    if (table.start != null && table.end != null && table.amount > 0) {
+      await printReceipt(table);
+    }
+    if (table.status != TableStatus.pending || table.start == null || table.end == null) return;
+    final HistoryEntry entry = HistoryEntry(
+      table: table.number,
+      start: table.start!,
+      end: table.end!,
+      seconds: table.end!.difference(table.start!).inSeconds,
+      amount: table.amount,
+      workDate: workdayOpenedAt ?? table.end!,
+    );
+    setState(() {
+      history.add(entry);
+      if (workdayActive) {
+        workdayGenerated += table.amount;
+        workdayGames += 1;
+      }
+      table.status = TableStatus.available;
+      table.start = null;
+      table.end = null;
+      table.amount = 0;
+    });
+    await saveHistory();
+    await saveTables();
+    await saveWorkday();
+  }'''
+          new = '''  Future<void> collect(BillTable table) async {
+    if (table.status != TableStatus.pending || table.start == null || table.end == null) return;
+
+    // Tomamos una copia antes de liberar la mesa para que el recibo conserve los datos.
+    final BillTable receiptTable = BillTable(table.number, table.rate)
+      ..status = TableStatus.pending
+      ..start = table.start
+      ..end = table.end
+      ..amount = table.amount;
+    final double collectedAmount = table.amount;
+    final DateTime collectedStart = table.start!;
+    final DateTime collectedEnd = table.end!;
+    final HistoryEntry entry = HistoryEntry(
+      table: table.number,
+      start: collectedStart,
+      end: collectedEnd,
+      seconds: collectedEnd.difference(collectedStart).inSeconds,
+      amount: collectedAmount,
+      workDate: workdayOpenedAt ?? collectedEnd,
+    );
+    setState(() {
+      history.add(entry);
+      if (workdayActive) {
+        workdayGenerated += collectedAmount;
+        workdayGames += 1;
+      }
+      table.status = TableStatus.available;
+      table.start = null;
+      table.end = null;
+      table.amount = 0;
+    });
+    await saveHistory();
+    await saveTables();
+    await saveWorkday();
+
+    // El cobro ya quedó registrado. Ahora se intenta imprimir automáticamente,
+    // sin que la impresora pueda impedir el cobro.
+    await printReceipt(receiptTable);
+  }'''
+          if old not in s:
+              raise SystemExit('collect block not found')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Commit patch and remove workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/main.dart
+          git rm .github/workflows/fix-cobrar-print-once.yml
+          git commit -m 'fix: imprimir recibo automaticamente despues de Cobrar'
+          git push origin main
