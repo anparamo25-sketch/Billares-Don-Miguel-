@@ -69,7 +69,9 @@ for marker in (
 ):
     if marker not in SOURCE:
         raise SystemExit(f'1.2.7 CONTRACT FAILED: estado visual ausente: {marker}')
-if 'Finalización:' not in SOURCE:
+
+# La TV 1.2.8 muestra explícitamente "Hora finalizada" en cada tarjeta.
+if 'Hora finalizada:' not in SOURCE:
     raise SystemExit('1.2.7 CONTRACT FAILED: falta hora de finalización')
 if 'panel externo' in SOURCE.lower() or 'vigilancia externa' in SOURCE.lower():
     raise SystemExit('1.2.7 CONTRACT FAILED: panel externo no permitido')
