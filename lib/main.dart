@@ -8,8 +8,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_background/flutter_background.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'cloud_tv_sync.dart';
 
-const String appVersion = '1.2.6+126';
+const String appVersion = '1.2.7+127';
 const String defaultPassword = '1234';
 const String updateManifestUrl = 'https://github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json';
 const Map<int, double> tableRates = <int, double>{1: 120, 2: 120, 3: 100, 4: 100, 5: 70};
@@ -321,6 +322,14 @@ int tab = 0;
     startBackgroundExecution();
     ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
+      publishCloudTvState(tableList.map((BillTable t) => <String, dynamic>{
+        'number': t.number,
+        'status': t.status.name,
+        'start': t.start?.toIso8601String(),
+        'end': t.end?.toIso8601String(),
+        'amount': t.status == TableStatus.playing ? t.liveAmount : t.amount,
+        'rate': t.rate,
+      }).toList());
     });
     Future<void>.delayed(const Duration(seconds: 2), () => checkForUpdate(showNoUpdate: false));
   }
@@ -356,6 +365,7 @@ int tab = 0;
     WidgetsBinding.instance.removeObserver(this);
     ticker?.cancel();
     server?.close(force: true);
+    disposeCloudTvSync();
     newPassword.dispose();
     confirmPassword.dispose();
     super.dispose();
