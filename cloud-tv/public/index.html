@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Billares Don Miguel</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#07111f;color:#fff;font-family:Arial,Helvetica,sans-serif}body{overflow:hidden}.page{min-height:100vh;padding:clamp(14px,2vw,32px);display:flex;flex-direction:column;gap:clamp(12px,1.5vw,24px)}header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:clamp(12px,2vw,22px);border-radius:22px;background:linear-gradient(135deg,#0b63ce,#123c91);box-shadow:0 10px 30px #0005}h1{margin:0;color:#fff;font-size:clamp(28px,4vw,58px);letter-spacing:.5px;text-shadow:2px 2px 0 #fff0,0 0 1px #fff}.live{display:flex;align-items:center;gap:9px;font-size:clamp(14px,1.5vw,22px);font-weight:700}.dot{width:12px;height:12px;border-radius:50%;background:#36e36b;box-shadow:0 0 12px #36e36b}.grid{flex:1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:clamp(10px,1.4vw,22px);align-items:stretch}.card{border-radius:24px;padding:clamp(14px,1.8vw,28px);display:flex;flex-direction:column;justify-content:space-between;min-height:0;box-shadow:0 12px 30px #0006;border:2px solid #ffffff25}.available{background:linear-gradient(160deg,#0d6b37,#082b1a)}.playing{background:linear-gradient(160deg,#a20e16,#41070a)}.pending{background:linear-gradient(160deg,#a06a00,#493000)}.top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}.number{font-size:clamp(25px,3vw,48px);font-weight:900}.status{font-size:clamp(13px,1.25vw,19px);font-weight:800;padding:7px 10px;border-radius:999px;background:#0005;text-align:center}.value{font-size:clamp(24px,2.7vw,44px);font-weight:900;margin-top:12px}.label{font-size:clamp(12px,1.1vw,17px);opacity:.78;margin-top:5px}.footer{display:flex;justify-content:space-between;gap:12px;margin-top:16px;font-size:clamp(13px,1.2vw,18px)}.end{margin-top:8px}.error{display:none;position:fixed;inset:0;background:#07111f;color:#fff;align-items:center;justify-content:center;text-align:center;padding:30px;font-size:clamp(18px,3vw,32px)}@media(max-width:1000px){.grid{grid-template-columns:repeat(3,1fr);overflow:auto}.card{min-height:250px}}@media(max-width:650px){.grid{grid-template-columns:repeat(2,1fr)}header{border-radius:16px}.card{border-radius:18px}}@media(max-width:430px){.grid{grid-template-columns:1fr 1fr}.page{padding:8px}.card{padding:12px}}
+</style>
+</head>
+<body>
+<div class="page">
+<header><h1>Billares Don Miguel</h1><div class="live"><span class="dot"></span> EN VIVO</div></header>
+<main id="grid" class="grid"></main>
+</div>
+<div id="error" class="error">No se pudo conectar con el servidor.<br><small>Compruebe la conexión a Internet.</small></div>
+<script>
+const grid=document.getElementById('grid');const error=document.getElementById('error');
+const money=n=>'C$ '+Number(n||0).toFixed(2);
+const duration=s=>{s=Math.max(0,Number(s||0));const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;return h+'h '+String(m).padStart(2,'0')+'m '+String(sec).padStart(2,'0')+'s'};
+const elapsed=t=>{if(!t.start)return 0;const end=t.end?new Date(t.end):new Date();return Math.max(0,Math.floor((end-new Date(t.start))/1000))};
+function render(data){error.style.display='none';const tables=data.tables||[];grid.innerHTML=tables.map(t=>{const status=t.status||'available';const text=status==='playing'?'En juego':status==='pending'?'Pendiente de cobro':'Disponible';const seconds=elapsed(t);const amount=status==='playing'?(seconds*Number(t.rate||0)/3600):Number(t.amount||0);return `<section class="card ${status}"><div><div class="top"><div class="number">Mesa ${t.number}</div><div class="status">${text}</div></div><div class="value">${money(amount)}</div><div class="label">Monto</div></div><div><div class="footer"><span>Inicio</span><strong>${t.start?new Date(t.start).toLocaleTimeString('es-NI',{hour:'2-digit',minute:'2-digit'}):'—'}</strong></div><div class="footer"><span>Tiempo</span><strong>${t.start?duration(seconds):'—'}</strong></div>${t.end?`<div class="footer end"><span>Finalizó</span><strong>${new Date(t.end).toLocaleTimeString('es-NI',{hour:'2-digit',minute:'2-digit'})}</strong></div>`:''}</div></section>`}).join('')}
+async function load(){try{const r=await fetch('/api/state?ts='+Date.now(),{cache:'no-store'});if(!r.ok)throw 0;render(await r.json())}catch(e){error.style.display='flex'}}
+function connect(){try{const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/stream');ws.onmessage=e=>render(JSON.parse(e.data));ws.onclose=()=>setTimeout(connect,3000);ws.onerror=()=>ws.close()}catch(e){setTimeout(connect,3000)}}
+load();connect();setInterval(()=>load(),10000);
+</script>
+</body></html>
