@@ -1,3 +1,5 @@
+import { DurableObject } from "cloudflare:workers";
+
 const TV_ROOM = 'don-miguel';
 
 export default {
