@@ -60,15 +60,15 @@ jobs:
           if [ "$installed" -ne 1 ]; then echo "ERROR: No se pudo instalar NDK ${NDK_VERSION} después de 3 intentos."; exit 1; fi
       - name: Generar plataforma Android limpia
         run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
-      - name: Preparar versión base 1.2.6
+      - name: Preparar fuente base para 1.2.7
         shell: bash
         run: |
           set -euo pipefail
           test -s lib/main.dart
-          grep -q "const String appVersion = '1.2.6+126';" lib/main.dart
+          grep -Eq "const String appVersion = '1\.2\.(6\+126|7\+127)';" lib/main.dart
           grep -q "const Map<int, double> tableRates" lib/main.dart
           grep -q "billaresdonmiguel.local" lib/main.dart
-          echo "Fuente base 1.2.6+126 verificada; se aplicarán las transformaciones finales 1.2.7."
+          echo "Fuente base compatible verificada; se conservarán las funciones/interfaz y se aplicará la integración Cloud TV 1.2.7."
       - name: Validar scripts 1.2.7
         run: python3 -m py_compile scripts/rebuild_tv_1_2_6.py scripts/repair_1_2_6_generated.py scripts/validate_1_2_6_contract.py scripts/validate_1_2_7_contract.py scripts/enforce_1_2_6_source.py scripts/add_cloud_tv_sync_1_2_7.py
       - name: Reconstruir TV, LAN y mDNS 1.2.6
