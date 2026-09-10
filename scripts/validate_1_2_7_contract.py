@@ -4,8 +4,10 @@ import re
 SOURCE = Path('lib/main.dart').read_text()
 NORMALIZED = re.sub(r'\s+', ' ', SOURCE)
 
+# Este contrato valida que la arquitectura y las funciones heredadas de 1.2.7
+# sigan presentes en la fuente de 1.2.8. La versión se valida por separado en
+# el paso específico de 1.2.8 y aquí no debe quedar fijada a 1.2.7+127.
 REQUIRED = {
-    "version": "appVersion = '1.2.7+127'",
     "updater": 'Billares-Don-Miguel-/raw/refs/heads/main/update.json',
     "tv_getter": 'String get tvHtml =>',
     "tv_title": 'Billares Don Miguel',
@@ -28,7 +30,11 @@ for name, marker in REQUIRED.items():
     if marker not in SOURCE and marker not in NORMALIZED:
         raise SystemExit(f'1.2.7 CONTRACT FAILED: falta {name}: {marker}')
 
-rate_decl = re.search(r'\btableRates\s*=\s*(?:<\s*int\s*,\s*double\s*>\s*)?\{([^{}]*)\}', SOURCE, flags=re.S)
+rate_decl = re.search(
+    r'\btableRates\s*=\s*(?:<\s*int\s*,\s*double\s*>\s*)?\{([^{}]*)\}',
+    SOURCE,
+    flags=re.S,
+)
 if not rate_decl:
     raise SystemExit('1.2.7 CONTRACT FAILED: tarifas fijas incorrectas o ausentes')
 entries = re.findall(r'(\d+)\s*:\s*(\d+(?:\.\d+)?)', rate_decl.group(1))
@@ -53,7 +59,14 @@ for pattern, name in (
 for marker in ('color:#1557c0', 'text-shadow:', 'font-size:clamp('):
     if marker not in SOURCE:
         raise SystemExit(f'1.2.7 CONTRACT FAILED: estilo TV ausente: {marker}')
-for marker in ('.green{', '.red{', '.yellow{', "'Disponible'", "'En juego'", "'Pendiente de cobro'"):
+for marker in (
+    '.green{',
+    '.red{',
+    '.yellow{',
+    "'Disponible'",
+    "'En juego'",
+    "'Pendiente de cobro'",
+):
     if marker not in SOURCE:
         raise SystemExit(f'1.2.7 CONTRACT FAILED: estado visual ausente: {marker}')
 if 'Finalización:' not in SOURCE:
@@ -64,4 +77,4 @@ for forbidden in ('faltante', 'sobrante', 'diferencia de caja', 'caja cuadrada')
     if forbidden in SOURCE.lower():
         raise SystemExit(f'1.2.7 CONTRACT FAILED: lógica prohibida: {forbidden}')
 
-print('OK: contrato 1.2.7 con Cloud TV validado')
+print('OK: contrato base 1.2.7 compatible con fuente 1.2.8 y Cloud TV validado')
