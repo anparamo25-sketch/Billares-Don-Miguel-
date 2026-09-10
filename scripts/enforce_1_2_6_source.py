@@ -8,10 +8,11 @@ TARGET = Path('lib/main.dart')
 subprocess.check_call(['python3', 'scripts/apply_admin_ui_1_2_6_fixed.py'])
 subprocess.check_call(['python3', 'scripts/force_admin_dashboard_1_2_7.py'])
 subprocess.check_call(['python3', 'scripts/fix_mdns_1_2_6.py'])
+subprocess.check_call(['python3', 'scripts/add_cloud_tv_sync_1_2_7.py'])
 subprocess.check_call(['python3', 'scripts/validate_generated_ui_1_2_6.py'])
 
 source = TARGET.read_text()
-source = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.6+126';", source, count=1)
+source = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.7+127';", source, count=1)
 source = re.sub(r"const Map<int, double> tableRates = .*?;", "const Map<int, double> tableRates = <int, double>{1: 120, 2: 120, 3: 100, 4: 100, 5: 70};", source, count=1, flags=re.S)
 if 'const Map<int, double> tableRates' not in source:
     anchor = "const String updateManifestUrl"
@@ -39,6 +40,12 @@ if source.count('RawDatagramSocket? _billaresMdnsSocket;') != 1:
     raise SystemExit('1.2.6 SOURCE FAILED: socket mDNS duplicado')
 if source.count('Future<void> _answerBillaresMdns') != 1 or source.count('Future<void> _startBillaresMdns') != 1:
     raise SystemExit('1.2.6 SOURCE FAILED: funciones mDNS duplicadas o ausentes')
+if "import 'cloud_tv_sync.dart';" not in source:
+    raise SystemExit('1.2.7 SOURCE FAILED: import de Cloud TV ausente')
+if 'publishCloudTvState(' not in source:
+    raise SystemExit('1.2.7 SOURCE FAILED: publicador Cloud TV ausente')
+if 'disposeCloudTvSync();' not in source:
+    raise SystemExit('1.2.7 SOURCE FAILED: liberación del publicador Cloud TV ausente')
 
 TARGET.write_text(source)
-print('OK: fuente final 1.2.6 con panel administrativo responsive forzado y mDNS corregido')
+print('OK: fuente final 1.2.7 con panel administrativo, mDNS y Cloud TV')
