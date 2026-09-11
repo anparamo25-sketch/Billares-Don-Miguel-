@@ -1,1 +1,1 @@
-thermal-printer-integration-20260911-2
+thermal-printer-integration-20260911-3
