@@ -165,7 +165,7 @@ jobs:
               'Tiempo jugado',
               'Hora finalizada',
               'MONTO A PAGAR',
-              'brandLogo',
+              'src="/tv-logo.webp"',
               '/api/state?ts=',
               '/api/stream',
               'setInterval(function(){if(lastState)render(lastState)},1000);',
