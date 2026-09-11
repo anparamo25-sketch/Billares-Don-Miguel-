@@ -1,0 +1,88 @@
+name: Finalizar fuente 1.2.9
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.29.3
+          channel: stable
+          cache: true
+
+      - name: Generar y consolidar fuente permanente
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/patch_tv_interface_1_2_9.py
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          pubspec = Path('pubspec.yaml')
+          pub = pubspec.read_text(encoding='utf-8').replace(
+              'print_bluetooth_thermal_plus: ^1.0.0',
+              'print_bluetooth_thermal: ^1.2.4',
+          )
+          pubspec.write_text(pub, encoding='utf-8')
+
+          main = Path('lib/main.dart')
+          source = main.read_text(encoding='utf-8').replace(
+              'package:print_bluetooth_thermal_plus/print_bluetooth_thermal.dart',
+              'package:print_bluetooth_thermal/print_bluetooth_thermal.dart',
+          )
+
+          pattern = re.compile(
+              r"\s*metricCard\(\s*'Disponibles',\s*'\$available',\s*Icons\.check_circle_outline,\s*\),\s*"
+              r"metricCard\('En juego', '\$playing', Icons\.sports_bar\),\s*"
+              r"metricCard\('Pendientes', '\$pending', Icons\.payments_outlined\),\s*",
+              re.MULTILINE,
+          )
+          source, removed = pattern.subn('\n', source, count=1)
+          if removed != 1:
+              raise SystemExit(f'No se pudo eliminar el bloque de métricas superior; coincidencias={removed}')
+
+          main.write_text(source, encoding='utf-8')
+          PY
+
+          dart format lib/main.dart lib/receipt_preview_page.dart
+          flutter pub get
+
+          test ! -e scripts/patch_tv_interface_1_2_9.py
+          grep -q "print_bluetooth_thermal: ^1.2.4" pubspec.yaml
+          grep -q "package:print_bluetooth_thermal/print_bluetooth_thermal.dart" lib/main.dart
+          grep -q "Future<bool> configureThermalPrinter() async" lib/main.dart
+          grep -q "String get tvHtml =>" lib/main.dart
+          grep -q "ReceiptPreviewPage" lib/main.dart
+
+      - name: Validar fuente consolidada
+        run: |
+          set -euo pipefail
+          dart format --output=none --set-exit-if-changed lib test
+          flutter analyze --fatal-warnings --no-fatal-infos
+          flutter test
+
+      - name: Guardar fuente permanente y retirar migrador
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm scripts/patch_tv_interface_1_2_9.py .github/workflows/finalize-source-129.yml
+          git add pubspec.yaml pubspec.lock lib/main.dart
+          git commit -m "Consolida fuente TV e impresora Bluetooth en 1.2.9"
+          git push origin HEAD:main
