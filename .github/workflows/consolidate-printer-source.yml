@@ -1,4 +1,4 @@
-name: Consolidar fuente impresora termica 1.2.9
+name: Correccion directa fuente 1.2.9
 
 on: push
 
@@ -6,7 +6,7 @@ permissions:
   contents: write
 
 jobs:
-  consolidate:
+  correct-source:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -14,151 +14,83 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
+
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: 3.47.3
           channel: stable
           cache: true
-      - name: Integrar fuente permanente
+
+      - name: Corregir directamente lib/main.dart
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import re
+
           p = Path('lib/main.dart')
           s = p.read_text(encoding='utf-8')
-          a = s.find('  Future<String?> printReceipt(BillTable table) async {')
-          b = s.find('  Future<void> collect(BillTable table) async {', a)
-          if a < 0 or b < 0:
-              raise SystemExit('No se encontró el bloque de impresión existente')
-          method = '''  Future<bool> configureThermalPrinter() async {
-    if (!mounted) return false;
-    try {
-      if (!await PrintBluetoothThermal.bluetoothEnabled) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Activa Bluetooth en la tablet para configurar la impresora.')));
-        return false;
-      }
-      if (!await PrintBluetoothThermal.isPermissionBluetoothGranted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Concede el permiso de Bluetooth y vuelve a abrir la configuración.')));
-        return false;
-      }
-      final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;
-      if (printers.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No hay impresoras térmicas Bluetooth emparejadas con esta tablet.')));
-        return false;
-      }
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String? savedMac = prefs.getString('thermal_printer_mac');
-      BluetoothInfo? selected;
-      for (final BluetoothInfo printer in printers) {
-        if (printer.macAdress == savedMac) selected = printer;
-      }
-      final BluetoothInfo? result = await showDialog<BluetoothInfo>(
-        context: context,
-        builder: (BuildContext dialogContext) {
-          BluetoothInfo? current = selected;
-          return StatefulBuilder(
-            builder: (BuildContext context, void Function(void Function()) setDialogState) => AlertDialog(
-              title: const Text('Impresora térmica'),
-              content: SizedBox(
-                width: 420,
-                child: ListView(
-                  shrinkWrap: true,
-                  children: printers.map((BluetoothInfo printer) => RadioListTile<String>(
-                    value: printer.macAdress,
-                    groupValue: current?.macAdress,
-                    onChanged: (String? value) {
-                      if (value == null) return;
-                      current = printers.firstWhere((BluetoothInfo item) => item.macAdress == value);
-                      setDialogState(() {});
-                    },
-                    title: Text(printer.name.isEmpty ? 'Impresora térmica' : printer.name),
-                    subtitle: Text(printer.macAdress),
-                  )).toList(),
-                ),
-              ),
-              actions: <Widget>[
-                TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('CANCELAR')),
-                FilledButton(onPressed: current == null ? null : () => Navigator.pop(dialogContext, current), child: const Text('GUARDAR')),
-              ],
-            ),
-          );
-        },
-      );
-      if (result == null) return false;
-      await prefs.setString('thermal_printer_name', result.name);
-      await prefs.setString('thermal_printer_mac', result.macAdress);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Impresora guardada: ${result.name.isEmpty ? result.macAdress : result.name}')));
-      return true;
-    } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir la configuración de la impresora térmica.')));
-      return false;
-    }
-  }
 
-  Future<String?> printReceipt(BillTable table) async {
-    if (table.start == null || table.end == null) return 'La partida no tiene datos completos para imprimir.';
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? mac = prefs.getString('thermal_printer_mac');
-    final String name = prefs.getString('thermal_printer_name') ?? '';
-    if (mac == null || mac.isEmpty) return 'Configura primero la impresora térmica en Configuración.';
-    try {
-      if (!await PrintBluetoothThermal.bluetoothEnabled) return 'Activa Bluetooth en la tablet para imprimir.';
-      if (!await PrintBluetoothThermal.isPermissionBluetoothGranted) return 'Concede el permiso de Bluetooth y vuelve a intentar.';
-      final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;
-      if (!printers.any((BluetoothInfo printer) => printer.macAdress == mac)) return 'La impresora ${name.isEmpty ? mac : name} ya no está emparejada. Configura o cambia la impresora.';
-      if (!await PrintBluetoothThermal.connect(macPrinterAddress: mac)) return 'No se pudo conectar con la impresora guardada.';
-      try {
-        final CapabilityProfile profile = await CapabilityProfile.load();
-        final Generator generator = Generator(PaperSize.mm58, profile);
-        final List<int> bytes = <int>[];
-        bytes.addAll(generator.text('Billares Don Miguel', styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2)));
-        bytes.addAll(generator.text('Mesa ${table.number}', styles: const PosStyles(align: PosAlign.center, bold: true)));
-        bytes.addAll(generator.hr());
-        bytes.addAll(generator.text('Hora de inicio: ${clock(table.start!)}'));
-        bytes.addAll(generator.text('Hora finalizada: ${clock(table.end!)}'));
-        bytes.addAll(generator.text('Tiempo jugado: ${duration(table.end!.difference(table.start!).inSeconds)}'));
-        bytes.addAll(generator.text('Tarifa: ${money(table.rate)} / hora'));
-        bytes.addAll(generator.hr());
-        bytes.addAll(generator.text('MONTO A PAGAR', styles: const PosStyles(align: PosAlign.center, bold: true)));
-        bytes.addAll(generator.text(money(table.amount), styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2)));
-        bytes.addAll(generator.feed(3));
-        bytes.addAll(generator.cut());
-        if (!await PrintBluetoothThermal.writeBytes(bytes)) return 'La impresora no aceptó el recibo.';
-        return null;
-      } finally {
-        await PrintBluetoothThermal.disconnect;
-      }
-    } catch (_) {
-      return 'No se pudo imprimir el recibo.';
-    }
-  }
-'''
-          s = s[:a] + method + s[b:]
-          ss = s.find('  void showSettings() {')
-          se = s.find('\n  @override\n  Widget build(BuildContext context)', ss)
-          if ss < 0 or se < 0:
-              raise SystemExit('No se encontró showSettings')
-          settings = s[ss:se]
-          if 'configureThermalPrinter' not in settings:
-              marker = """              const Text(\n                'Tarifas fijas',\n                style: TextStyle(fontWeight: FontWeight.bold),\n              ),\n"""
-              button = """              const SizedBox(height: 16),\n              OutlinedButton.icon(\n                onPressed: configureThermalPrinter,\n                icon: const Icon(Icons.print_outlined),\n                label: const Text('Impresora térmica'),\n              ),\n"""
-              if marker not in settings:
-                  raise SystemExit('No se encontró el bloque de tarifas')
-              s = s[:ss] + settings.replace(marker, marker + button, 1) + s[se:]
+          if 'Future<bool> configureThermalPrinter() async {' not in s:
+              raise SystemExit('ERROR: falta configureThermalPrinter en la fuente')
+
+          old = '''                FilledButton.icon(
+                  onPressed: showTvConnection,
+                  icon: const Icon(Icons.tv),
+                  label: const Text('Mostrar en TV'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: checkForUpdate,
+                  icon: const Icon(Icons.system_update_alt),
+                  label: const Text('Buscar actualización'),
+                ),'''
+
+          new = '''                OutlinedButton.icon(
+                  onPressed: configureThermalPrinter,
+                  icon: const Icon(Icons.print_outlined),
+                  label: const Text('Configurar impresora térmica'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: checkForUpdate,
+                  icon: const Icon(Icons.system_update_alt),
+                  label: const Text('Buscar actualización'),
+                ),'''
+
+          if old not in s:
+              if 'label: const Text(\'Configurar impresora térmica\')' not in s:
+                  raise SystemExit('ERROR: no se encontró el bloque de interfaz que debe corregirse')
+          else:
+              s = s.replace(old, new, 1)
+
+          if 'onPressed: showTvConnection' in s:
+              raise SystemExit('ERROR: el botón Mostrar en TV sigue presente en la interfaz')
+          if 'Compartir pantalla' in s or 'compartir pantalla' in s:
+              raise SystemExit('ERROR: todavía existe una referencia a Compartir pantalla')
+          if 'label: const Text(\'Configurar impresora térmica\')' not in s:
+              raise SystemExit('ERROR: no quedó el botón Configurar impresora térmica')
+
           p.write_text(s, encoding='utf-8')
           PY
-          dart format lib/main.dart
+
           flutter pub get
+          dart format lib/main.dart
           flutter analyze --fatal-warnings --no-fatal-infos
           flutter test
+
+      - name: Verificar correcciones permanentes
+        shell: bash
+        run: |
+          set -euo pipefail
           grep -q "Future<bool> configureThermalPrinter() async" lib/main.dart
+          grep -q "Configurar impresora térmica" lib/main.dart
+          ! grep -q "onPressed: showTvConnection" lib/main.dart
+          ! grep -qi "Compartir pantalla" lib/main.dart
           grep -q "thermal_printer_mac" lib/main.dart
           grep -q "thermal_printer_name" lib/main.dart
-          grep -q "Impresora térmica" lib/main.dart
-      - name: Guardar fuente permanente y retirar workflow
+          echo "Fuente 1.2.9/129 verificada: impresora visible y botón de compartir pantalla eliminado."
+
+      - name: Guardar corrección directamente en main y retirar workflow
         shell: bash
         run: |
           set -euo pipefail
@@ -166,5 +98,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add lib/main.dart
           git rm .github/workflows/consolidate-printer-source.yml
-          git commit -m "Integra definitivamente la configuracion de impresora termica"
+          git commit -m "Corrige interfaz de impresora y elimina compartir pantalla"
           git push origin HEAD:main
