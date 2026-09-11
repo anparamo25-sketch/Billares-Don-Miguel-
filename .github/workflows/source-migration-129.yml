@@ -34,49 +34,30 @@ jobs:
           main = Path('lib/main.dart')
           s = main.read_text(encoding='utf-8')
 
-          # La aplicación deja de depender del fork antiguo y usa la versión
-          # upstream que corrigió los bloqueos de Bluetooth en Android 12+.
           s = s.replace(
               "import 'package:print_bluetooth_thermal_plus/print_bluetooth_thermal.dart';",
               "import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';",
           )
 
-          # La configuración de impresora ya está en main.dart; elimina los
-          # timeouts que ocultaban el bloqueo del plugin y usa sus Futures reales.
-          s = re.sub(
-              r'await PrintBluetoothThermal\.bluetoothEnabled\.timeout\(\s*const Duration\(seconds: 3\),\s*onTimeout: \(\) => false,\s*\)',
-              'await PrintBluetoothThermal.bluetoothEnabled', s,
-          )
-          s = re.sub(
-              r'await PrintBluetoothThermal\.isPermissionBluetoothGranted\.timeout\(\s*const Duration\(seconds: 3\),\s*onTimeout: \(\) => false,\s*\)',
-              'await PrintBluetoothThermal.isPermissionBluetoothGranted', s,
-          )
-          s = re.sub(
-              r'await PrintBluetoothThermal\.pairedBluetooths\.timeout\(\s*const Duration\(seconds: 5\),\s*onTimeout: \(\) => <BluetoothInfo>\[\],\s*\)',
-              'await PrintBluetoothThermal.pairedBluetooths', s,
-          )
-          s = re.sub(
-              r'await PrintBluetoothThermal\.connect\(\s*macPrinterAddress: ([^\n]+),\s*\)\.timeout\(\s*const Duration\(seconds: 8\),\s*onTimeout: \(\) => false,\s*\)',
-              r'await PrintBluetoothThermal.connect(macPrinterAddress: \1)', s,
-          )
+          s = re.sub(r'await PrintBluetoothThermal\.bluetoothEnabled\.timeout\(\s*const Duration\(seconds: 3\),\s*onTimeout: \(\) => false,\s*\)', 'await PrintBluetoothThermal.bluetoothEnabled', s)
+          s = re.sub(r'await PrintBluetoothThermal\.isPermissionBluetoothGranted\.timeout\(\s*const Duration\(seconds: 3\),\s*onTimeout: \(\) => false,\s*\)', 'await PrintBluetoothThermal.isPermissionBluetoothGranted', s)
+          s = re.sub(r'await PrintBluetoothThermal\.pairedBluetooths\.timeout\(\s*const Duration\(seconds: 5\),\s*onTimeout: \(\) => <BluetoothInfo>\[\],\s*\)', 'await PrintBluetoothThermal.pairedBluetooths', s)
+          s = re.sub(r'await PrintBluetoothThermal\.connect\(\s*macPrinterAddress: ([^\n]+),\s*\)\.timeout\(\s*const Duration\(seconds: 8\),\s*onTimeout: \(\) => false,\s*\)', r'await PrintBluetoothThermal.connect(macPrinterAddress: \1)', s)
 
-          # Elimina las tres tarjetas resumen solicitadas; conserva Generado hoy.
-          s = re.sub(
-              r'      final int available =.*?      Widget metricCard\(String title, String value, IconData icon\) \{.*?\n      \}\n\n      return SingleChildScrollView',
-              '      return SingleChildScrollView', s, count=1, flags=re.S,
-          )
-          s = re.sub(
-              r"                metricCard\(\n                  'Disponibles',\n                  '\$available',\n                  Icons\.check_circle_outline,\n                \),\n                metricCard\('En juego', '\$playing', Icons\.sports_bar\),\n                metricCard\('Pendientes', '\$pending', Icons\.payments_outlined\),\n",
-              '', s, count=1,
-          )
+          # Elimina las tres tarjetas resumen, pero conserva Generado hoy.
+          metric_fn = r'      final int available =.*?      Widget metricCard\(String title, String value, IconData icon\) \{.*?\n      \}\n\n      return SingleChildScrollView'
+          s, n = re.subn(metric_fn, '      return SingleChildScrollView', s, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit('No se pudo retirar el bloque de tarjetas resumen')
+          cards = r"                metricCard\(\n                  'Disponibles',\n                  '\$available',\n                  Icons\.check_circle_outline,\n                \),\n                metricCard\('En juego', '\$playing', Icons\.sports_bar\),\n                metricCard\('Pendientes', '\$pending', Icons\.payments_outlined\),\n"
+          s, n = re.subn(cards, '', s, count=1)
+          if n != 1:
+              raise SystemExit('No se pudieron retirar las tres tarjetas resumen')
 
           main.write_text(s, encoding='utf-8')
 
           pub = Path('pubspec.yaml')
-          p = pub.read_text(encoding='utf-8').replace(
-              'print_bluetooth_thermal_plus: ^1.0.0',
-              'print_bluetooth_thermal: ^1.2.4',
-          )
+          p = pub.read_text(encoding='utf-8').replace('print_bluetooth_thermal_plus: ^1.0.0', 'print_bluetooth_thermal: ^1.2.4')
           pub.write_text(p, encoding='utf-8')
 
           build = Path('.github/workflows/build-apk.yml')
@@ -92,25 +73,22 @@ jobs:
           echo "OK: fuente TV 1.2.9 generada y origen HTML presente"
 
 '''
-          if old_step not in w:
-              raise SystemExit('No se encontró el paso de generación TV que debe eliminarse')
-          w = w.replace(old_step, '', 1)
-          w = w.replace("          grep -q \"print_bluetooth_thermal_plus\" lib/main.dart\n", "          grep -q \"print_bluetooth_thermal/print_bluetooth_thermal.dart\" lib/main.dart\n", 1)
+          if old_step in w:
+              w = w.replace(old_step, '', 1)
+          w = w.replace('          grep -q "print_bluetooth_thermal_plus" lib/main.dart\n', '          grep -q "package:print_bluetooth_thermal/print_bluetooth_thermal.dart" lib/main.dart\n')
           build.write_text(w, encoding='utf-8')
           PY
-
-          dart format lib/main.dart lib/receipt_preview_page.dart
 
       - name: Validar que no quede mecanismo de parcheo
         run: |
           test ! -e scripts/patch_tv_interface_1_2_9.py
           test ! -e .github/workflows/fix-cobrar-print-once.yml
-          ! grep -R "patch_tv_interface_1_2_9.py\|fix-cobrar-print-once" .github/workflows lib scripts --exclude-dir=.git || true
           grep -q "print_bluetooth_thermal: ^1.2.4" pubspec.yaml
           grep -q "package:print_bluetooth_thermal/print_bluetooth_thermal.dart" lib/main.dart
           ! grep -q "Disponibles" lib/main.dart
           ! grep -q "En juego.*metricCard" lib/main.dart
           ! grep -q "Pendientes.*metricCard" lib/main.dart
+          git diff --check
 
       - name: Guardar fuente corregida y eliminar migrador
         run: |
@@ -124,5 +102,4 @@ jobs:
       - name: Lanzar build definitivo
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          gh workflow run .github/workflows/build-apk.yml --ref main
+        run: gh workflow run .github/workflows/build-apk.yml --ref main
