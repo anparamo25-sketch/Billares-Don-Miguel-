@@ -54,22 +54,36 @@ if "import 'receipt_preview_page.dart';" not in source:
     source = source.replace(import_marker, import_marker + "\nimport 'receipt_preview_page.dart';", 1)
 
 printer_methods = '''  Future<List<BluetoothInfo>> _pairedThermalPrinters() async {
-    final bool enabled = await PrintBluetoothThermal.bluetoothEnabled;
+    final bool enabled = await PrintBluetoothThermal.bluetoothEnabled.timeout(
+      const Duration(seconds: 3),
+      onTimeout: () => false,
+    );
     if (!enabled) {
       throw StateError('Activa Bluetooth en la tablet para configurar la impresora.');
     }
-    final bool permission = await PrintBluetoothThermal.isPermissionBluetoothGranted;
+    final bool permission = await PrintBluetoothThermal.isPermissionBluetoothGranted.timeout(
+      const Duration(seconds: 3),
+      onTimeout: () => false,
+    );
     if (!permission) {
       throw StateError('Concede el permiso de Bluetooth en Android y vuelve a pulsar Impresora térmica.');
     }
-    return PrintBluetoothThermal.pairedBluetooths;
+    return PrintBluetoothThermal.pairedBluetooths.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () => <BluetoothInfo>[],
+    );
   }
 
   Future<bool> configureThermalPrinter() async {
     if (!mounted) return false;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Abriendo configuración de impresora…')),
+    );
     try {
       final List<BluetoothInfo> printers = await _pairedThermalPrinters();
       if (!mounted) return false;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       if (printers.isEmpty) {
         await showDialog<void>(
           context: context,
@@ -161,6 +175,9 @@ printer_methods = '''  Future<List<BluetoothInfo>> _pairedThermalPrinters() asyn
       if (chosen == null) return false;
       final bool connected = await PrintBluetoothThermal.connect(
         macPrinterAddress: chosen.macAdress,
+      ).timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => false,
       );
       if (!connected) {
         if (mounted) {
@@ -196,6 +213,7 @@ printer_methods = '''  Future<List<BluetoothInfo>> _pairedThermalPrinters() asyn
       return true;
     } catch (error) {
       if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         await showDialog<void>(
           context: context,
           builder: (BuildContext dialogContext) => AlertDialog(
@@ -226,16 +244,25 @@ new_print = '''  Future<String?> printReceipt(BillTable table) async {
       return 'La partida no tiene datos completos para imprimir.';
     }
     try {
-      final bool enabled = await PrintBluetoothThermal.bluetoothEnabled;
+      final bool enabled = await PrintBluetoothThermal.bluetoothEnabled.timeout(
+        const Duration(seconds: 3),
+        onTimeout: () => false,
+      );
       if (!enabled) return 'Activa Bluetooth en la tablet para imprimir.';
-      final bool permission = await PrintBluetoothThermal.isPermissionBluetoothGranted;
+      final bool permission = await PrintBluetoothThermal.isPermissionBluetoothGranted.timeout(
+        const Duration(seconds: 3),
+        onTimeout: () => false,
+      );
       if (!permission) return 'Concede el permiso de Bluetooth y vuelve a intentar.';
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? savedMac = prefs.getString('thermal_printer_mac');
       if (savedMac == null || savedMac.isEmpty) {
         return 'Primero configura la impresora térmica en Configuración.';
       }
-      final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;
+      final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => <BluetoothInfo>[],
+      );
       BluetoothInfo? printer;
       for (final BluetoothInfo item in printers) {
         if (item.macAdress == savedMac) {
@@ -248,6 +275,9 @@ new_print = '''  Future<String?> printReceipt(BillTable table) async {
       }
       final bool connected = await PrintBluetoothThermal.connect(
         macPrinterAddress: savedMac,
+      ).timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => false,
       );
       if (!connected) {
         return 'No se pudo conectar con la impresora configurada. Verifica que esté encendida y vuelve a intentar.';
