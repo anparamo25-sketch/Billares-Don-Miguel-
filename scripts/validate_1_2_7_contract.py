@@ -1,21 +1,18 @@
 from pathlib import Path
 import re
 
-# Este validador solo comprueba la fuente que ya fue generada por el paso de
-# construcción. No regenera, modifica ni hace commits durante la validación.
-SOURCE = Path('lib/main.dart').read_text()
-NORMALIZED = re.sub(r'\s+', ' ', SOURCE)
+# El contrato se valida contra cada fuente en su lugar real.
+# lib/main.dart contiene el HTML de TV codificado en Base64, por lo que no
+# debe buscarse allí texto HTML/CSS literal. cloud-tv/public/index.html es la
+# fuente funcional de la TV y se valida directamente.
+APP_SOURCE = Path('lib/main.dart').read_text()
+TV_SOURCE = Path('cloud-tv/public/index.html').read_text()
+APP_NORMALIZED = re.sub(r'\s+', ' ', APP_SOURCE)
+TV_NORMALIZED = re.sub(r'\s+', ' ', TV_SOURCE)
 
-# Contrato funcional de la versión 1.2.9/129. Las comprobaciones heredadas
-# garantizan que las funciones existentes sigan presentes, pero el contrato
-# y sus mensajes ya no están vinculados a una versión anterior.
-REQUIRED = {
+REQUIRED_APP = {
     "updater": 'Billares-Don-Miguel-/raw/refs/heads/main/update.json',
     "tv_getter": 'String get tvHtml =>',
-    "tv_title": 'Billares Don Miguel',
-    "tv_host": 'billaresdonmiguel.local',
-    "tv_url": 'http://billaresdonmiguel.local/tv',
-    "tv_api": '/api/state?ts=',
     "lan_port_field": 'lanPort',
     "mdns_socket": 'RawDatagramSocket',
     "mdns_group": '224.0.0.251',
@@ -28,13 +25,13 @@ REQUIRED = {
     "cloud_tv_import": "import 'cloud_tv_sync.dart';",
     "cloud_tv_publish": 'publishCloudTvState(',
 }
-for name, marker in REQUIRED.items():
-    if marker not in SOURCE and marker not in NORMALIZED:
+for name, marker in REQUIRED_APP.items():
+    if marker not in APP_SOURCE and marker not in APP_NORMALIZED:
         raise SystemExit(f'1.2.9 CONTRACT FAILED: falta {name}: {marker}')
 
 rate_decl = re.search(
     r'\btableRates\s*=\s*(?:<\s*int\s*,\s*double\s*>\s*)?\{([^{}]*)\}',
-    SOURCE,
+    APP_SOURCE,
     flags=re.S,
 )
 if not rate_decl:
@@ -47,7 +44,7 @@ if actual_rates != expected_rates or len(entries) != len(expected_rates):
 
 for port in (80, 8080):
     pattern = rf'HttpServer\.bind\(\s*InternetAddress\.anyIPv4\s*,\s*{port}\b'
-    if not re.search(pattern, NORMALIZED):
+    if not re.search(pattern, APP_NORMALIZED):
         raise SystemExit(f'1.2.9 CONTRACT FAILED: servidor LAN sin soporte para puerto {port}')
 
 for pattern, name in (
@@ -55,11 +52,28 @@ for pattern, name in (
     (r'(?m)^\s*Future<void>\s+showTvConnection\s*\(', 'showTvConnection'),
     (r'(?m)^\s*String\s+get\s+tvHtml\s*=>', 'tvHtml'),
 ):
-    if len(re.findall(pattern, SOURCE)) != 1:
+    if len(re.findall(pattern, APP_SOURCE)) != 1:
         raise SystemExit(f'1.2.9 CONTRACT FAILED: {name} debe existir exactamente una vez')
 
+# Contrato de la interfaz TV: se valida contra su fuente HTML real.
+REQUIRED_TV = {
+    'tv_title': 'Billares Don Miguel',
+    'tv_host': 'billaresdonmiguel.local',
+    'tv_api': '/api/state?ts=',
+    'tv_stream': '/api/stream',
+    'tv_start': 'Hora de inicio:',
+    'tv_elapsed': 'Tiempo jugado:',
+    'tv_end': 'Hora finalizada:',
+    'tv_amount': 'MONTO A PAGAR',
+    'tv_logo': 'brandLogo',
+    'tv_timer': 'setInterval(function(){if(lastState)render(lastState)},1000);',
+}
+for name, marker in REQUIRED_TV.items():
+    if marker not in TV_SOURCE and marker not in TV_NORMALIZED:
+        raise SystemExit(f'1.2.9 CONTRACT FAILED: falta {name} en la fuente TV: {marker}')
+
 for marker in ('color:#1557c0', 'text-shadow:', 'font-size:clamp('):
-    if marker not in SOURCE:
+    if marker not in TV_SOURCE:
         raise SystemExit(f'1.2.9 CONTRACT FAILED: estilo TV ausente: {marker}')
 for marker in (
     '.green{',
@@ -69,19 +83,19 @@ for marker in (
     "'En juego'",
     "'Pendiente de cobro'",
 ):
-    if marker not in SOURCE:
+    if marker not in TV_SOURCE:
         raise SystemExit(f'1.2.9 CONTRACT FAILED: estado visual ausente: {marker}')
 
-if 'Hora finalizada:' not in SOURCE:
-    raise SystemExit('1.2.9 CONTRACT FAILED: falta hora de finalización')
-if 'panel externo' in SOURCE.lower() or 'vigilancia externa' in SOURCE.lower():
+if 'Hora finalizada:' not in TV_SOURCE:
+    raise SystemExit('1.2.9 CONTRACT FAILED: falta hora de finalización en TV')
+if 'panel externo' in APP_SOURCE.lower() or 'panel externo' in TV_SOURCE.lower():
     raise SystemExit('1.2.9 CONTRACT FAILED: panel externo no permitido')
 for forbidden in ('faltante', 'sobrante', 'diferencia de caja', 'caja cuadrada'):
-    if forbidden in SOURCE.lower():
+    if forbidden in APP_SOURCE.lower() or forbidden in TV_SOURCE.lower():
         raise SystemExit(f'1.2.9 CONTRACT FAILED: lógica prohibida: {forbidden}')
 
-version_match = re.search(r"const String appVersion = '([^']+)';", SOURCE)
+version_match = re.search(r"const String appVersion = '([^']+)';", APP_SOURCE)
 if not version_match or version_match.group(1) != '1.2.9+129':
     raise SystemExit('1.2.9 CONTRACT FAILED: la fuente no corresponde a la versión 1.2.9+129')
 
-print('OK: contrato funcional 1.2.9/129 validado con arquitectura heredada y Cloud TV')
+print('OK: contrato funcional 1.2.9/129 validado desde lib/main.dart y cloud-tv/public/index.html')
