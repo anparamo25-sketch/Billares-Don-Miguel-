@@ -33,7 +33,6 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-
           pubspec = Path('pubspec.yaml')
           pub = pubspec.read_text(encoding='utf-8')
           pub = pub.replace('flutter: ">=3.29.0"', 'flutter: ">=3.44.0"')
@@ -42,10 +41,7 @@ jobs:
 
           main = Path('lib/main.dart')
           source = main.read_text(encoding='utf-8')
-          source = source.replace(
-              'package:print_bluetooth_thermal_plus/print_bluetooth_thermal.dart',
-              'package:print_bluetooth_thermal/print_bluetooth_thermal.dart',
-          )
+          source = source.replace('package:print_bluetooth_thermal_plus/print_bluetooth_thermal.dart', 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart')
           old = """                metricCard(\n                  'Disponibles',\n                  '$available',\n                  Icons.check_circle_outline,\n                ),\n                metricCard('En juego', '$playing', Icons.sports_bar),\n                metricCard('Pendientes', '$pending', Icons.payments_outlined),\n                metricCard(\n                  'Generado hoy',\n                  money(todayTotal),\n                  Icons.attach_money,\n                ),"""
           new = """                metricCard(\n                  'Generado hoy',\n                  money(todayTotal),\n                  Icons.attach_money,\n                ),"""
           if old not in source:
@@ -53,12 +49,10 @@ jobs:
           source = source.replace(old, new, 1)
           main.write_text(source, encoding='utf-8')
           PY
-
           dart format lib test
           flutter pub get
           flutter analyze --fatal-warnings --no-fatal-infos
           flutter test
-
           grep -q 'print_bluetooth_thermal: ^1.2.4' pubspec.yaml
           grep -q 'flutter: ">=3.44.0"' pubspec.yaml
           grep -q 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart' lib/main.dart
@@ -66,24 +60,23 @@ jobs:
           ! grep -q "'En juego'" lib/main.dart
           ! grep -q "'Pendientes'" lib/main.dart
 
-      - name: Retirar archivos temporales y consolidar cambios
+      - name: Publicar fuente permanente
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm -f scripts/patch_tv_interface_1_2_9.py .github/workflows/finalize-source-129.yml .github/workflows/migrate-source-129.yml .github/workflows/fix-cobrar-print-once.yml 2>/dev/null || true
-          git add pubspec.yaml lib/main.dart lib/cloud_tv_sync.dart lib/receipt_preview_page.dart test .github/workflows/build-apk.yml
+          git add pubspec.yaml lib/main.dart lib/cloud_tv_sync.dart lib/receipt_preview_page.dart test
           git add -u
-          git commit -m 'Consolida fuente permanente TV e impresora Bluetooth'
+          git commit -m "Consolida fuente permanente TV e impresora Bluetooth"
           git push origin HEAD:main
 
-      - name: Retirar este workflow de consolidacion
+      - name: Retirar archivos temporales
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main
           git reset --hard origin/main
-          git rm -f .github/workflows/consolidate-source-129.yml
-          git commit -m 'Retira workflow temporal de consolidacion'
+          git rm -f scripts/patch_tv_interface_1_2_9.py .github/workflows/migrate-source-129.yml .github/workflows/finalize-source-129.yml .github/workflows/fix-cobrar-print-once.yml .github/workflows/consolidate-source-129.yml 2>/dev/null || true
+          git commit -m "Retira migradores y workflows temporales"
           git push origin HEAD:main
