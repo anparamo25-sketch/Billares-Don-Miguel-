@@ -47,6 +47,10 @@ jobs:
           if old not in source:
               raise SystemExit('No se encontro el bloque exacto de metricas en lib/main.dart.')
           source = source.replace(old, new, 1)
+          unused = """      final int available =\n          tableList\n              .where((BillTable t) => t.status == TableStatus.available)\n              .length;\n      final int playing =\n          tableList\n              .where((BillTable t) => t.status == TableStatus.playing)\n              .length;\n      final int pending =\n          tableList\n              .where((BillTable t) => t.status == TableStatus.pending)\n              .length;\n"""
+          if unused not in source:
+              raise SystemExit('No se encontraron las variables de metricas sin uso.')
+          source = source.replace(unused, '', 1)
           main.write_text(source, encoding='utf-8')
           PY
           dart format lib test
