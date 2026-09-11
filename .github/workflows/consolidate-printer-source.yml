@@ -1,11 +1,6 @@
 name: Consolidar fuente impresora termica 1.2.9
 
-on:
-  workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/consolidate-printer-source.yml
+on: push
 
 permissions:
   contents: write
@@ -13,221 +8,125 @@ permissions:
 jobs:
   consolidate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: true
-
-      - name: Configurar Flutter 3.47.3
+      - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: 3.47.3
           channel: stable
           cache: true
-
-      - name: Integrar fuente permanente de impresora
+      - name: Integrar fuente permanente
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           import re
-
-          path = Path('lib/main.dart')
-          source = path.read_text(encoding='utf-8')
-
-          if "package:print_bluetooth_thermal/print_bluetooth_thermal.dart" not in source:
-              raise SystemExit('Falta la dependencia print_bluetooth_thermal en main.dart')
-
-          start = source.find('  Future<String?> printReceipt(BillTable table) async {')
-          end = source.find('  Future<void> collect(BillTable table) async {', start)
-          if start < 0 or end < 0:
-              raise SystemExit('No se pudo localizar el bloque permanente de cobro/impresion')
-
-          printer_method = r'''  Future<bool> configureThermalPrinter() async {
+          p = Path('lib/main.dart')
+          s = p.read_text(encoding='utf-8')
+          a = s.find('  Future<String?> printReceipt(BillTable table) async {')
+          b = s.find('  Future<void> collect(BillTable table) async {', a)
+          if a < 0 or b < 0:
+              raise SystemExit('No se encontró el bloque de impresión existente')
+          method = '''  Future<bool> configureThermalPrinter() async {
     if (!mounted) return false;
     try {
-      final bool enabled = await PrintBluetoothThermal.bluetoothEnabled;
-      if (!enabled) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Activa Bluetooth en la tablet para configurar la impresora.')),
-        );
+      if (!await PrintBluetoothThermal.bluetoothEnabled) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Activa Bluetooth en la tablet para configurar la impresora.')));
         return false;
       }
-      final bool permission = await PrintBluetoothThermal.isPermissionBluetoothGranted;
-      if (!permission) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Concede el permiso de Bluetooth y vuelve a abrir la configuración.')),
-        );
+      if (!await PrintBluetoothThermal.isPermissionBluetoothGranted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Concede el permiso de Bluetooth y vuelve a abrir la configuración.')));
         return false;
       }
       final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;
       if (printers.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No hay impresoras térmicas Bluetooth emparejadas con esta tablet.')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No hay impresoras térmicas Bluetooth emparejadas con esta tablet.')));
         return false;
       }
-
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? savedMac = prefs.getString('thermal_printer_mac');
       BluetoothInfo? selected;
       for (final BluetoothInfo printer in printers) {
         if (printer.macAdress == savedMac) selected = printer;
       }
-
       final BluetoothInfo? result = await showDialog<BluetoothInfo>(
         context: context,
         builder: (BuildContext dialogContext) {
           BluetoothInfo? current = selected;
           return StatefulBuilder(
-            builder: (BuildContext context, void Function(void Function()) setDialogState) {
-              return AlertDialog(
-                title: const Text('Impresora térmica'),
-                content: SizedBox(
-                  width: 420,
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: printers.map((BluetoothInfo printer) {
-                      return RadioListTile<String>(
-                        value: printer.macAdress,
-                        groupValue: current?.macAdress,
-                        onChanged: (String? value) {
-                          if (value == null) return;
-                          current = printers.firstWhere((BluetoothInfo item) => item.macAdress == value);
-                          setDialogState(() {});
-                        },
-                        title: Text(printer.name.isEmpty ? 'Impresora térmica' : printer.name),
-                        subtitle: Text(printer.macAdress),
-                      );
-                    }).toList(),
-                  ),
+            builder: (BuildContext context, void Function(void Function()) setDialogState) => AlertDialog(
+              title: const Text('Impresora térmica'),
+              content: SizedBox(
+                width: 420,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: printers.map((BluetoothInfo printer) => RadioListTile<String>(
+                    value: printer.macAdress,
+                    groupValue: current?.macAdress,
+                    onChanged: (String? value) {
+                      if (value == null) return;
+                      current = printers.firstWhere((BluetoothInfo item) => item.macAdress == value);
+                      setDialogState(() {});
+                    },
+                    title: Text(printer.name.isEmpty ? 'Impresora térmica' : printer.name),
+                    subtitle: Text(printer.macAdress),
+                  )).toList(),
                 ),
-                actions: <Widget>[
-                  TextButton(
-                    onPressed: () => Navigator.pop(dialogContext),
-                    child: const Text('CANCELAR'),
-                  ),
-                  FilledButton(
-                    onPressed: current == null
-                        ? null
-                        : () => Navigator.pop(dialogContext, current),
-                    child: const Text('GUARDAR'),
-                  ),
-                ],
-              );
-            },
+              ),
+              actions: <Widget>[
+                TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('CANCELAR')),
+                FilledButton(onPressed: current == null ? null : () => Navigator.pop(dialogContext, current), child: const Text('GUARDAR')),
+              ],
+            ),
           );
         },
       );
-
       if (result == null) return false;
       await prefs.setString('thermal_printer_name', result.name);
       await prefs.setString('thermal_printer_mac', result.macAdress);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Impresora guardada: ${result.name.isEmpty ? result.macAdress : result.name}',
-            ),
-          ),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Impresora guardada: ${result.name.isEmpty ? result.macAdress : result.name}')));
       return true;
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo abrir la configuración de la impresora térmica.')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir la configuración de la impresora térmica.')));
       return false;
     }
   }
 
   Future<String?> printReceipt(BillTable table) async {
-    if (table.start == null || table.end == null) {
-      return 'La partida no tiene datos completos para imprimir.';
-    }
-
+    if (table.start == null || table.end == null) return 'La partida no tiene datos completos para imprimir.';
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? savedMac = prefs.getString('thermal_printer_mac');
-    final String savedName = prefs.getString('thermal_printer_name') ?? '';
-    if (savedMac == null || savedMac.isEmpty) {
-      return 'Configura primero la impresora térmica en Configuración.';
-    }
-
+    final String? mac = prefs.getString('thermal_printer_mac');
+    final String name = prefs.getString('thermal_printer_name') ?? '';
+    if (mac == null || mac.isEmpty) return 'Configura primero la impresora térmica en Configuración.';
     try {
-      final bool enabled = await PrintBluetoothThermal.bluetoothEnabled;
-      if (!enabled) return 'Activa Bluetooth en la tablet para imprimir.';
-      final bool permission = await PrintBluetoothThermal.isPermissionBluetoothGranted;
-      if (!permission) return 'Concede el permiso de Bluetooth y vuelve a intentar.';
-
+      if (!await PrintBluetoothThermal.bluetoothEnabled) return 'Activa Bluetooth en la tablet para imprimir.';
+      if (!await PrintBluetoothThermal.isPermissionBluetoothGranted) return 'Concede el permiso de Bluetooth y vuelve a intentar.';
       final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;
-      final bool paired = printers.any((BluetoothInfo printer) => printer.macAdress == savedMac);
-      if (!paired) {
-        return 'La impresora ${savedName.isEmpty ? savedMac : savedName} ya no está emparejada. Configura o cambia la impresora.';
-      }
-
-      final bool connected = await PrintBluetoothThermal.connect(
-        macPrinterAddress: savedMac,
-      );
-      if (!connected) return 'No se pudo conectar con la impresora guardada.';
-
+      if (!printers.any((BluetoothInfo printer) => printer.macAdress == mac)) return 'La impresora ${name.isEmpty ? mac : name} ya no está emparejada. Configura o cambia la impresora.';
+      if (!await PrintBluetoothThermal.connect(macPrinterAddress: mac)) return 'No se pudo conectar con la impresora guardada.';
       try {
         final CapabilityProfile profile = await CapabilityProfile.load();
         final Generator generator = Generator(PaperSize.mm58, profile);
         final List<int> bytes = <int>[];
-        bytes.addAll(
-          generator.text(
-            'Billares Don Miguel',
-            styles: const PosStyles(
-              align: PosAlign.center,
-              bold: true,
-              height: PosTextSize.size2,
-              width: PosTextSize.size2,
-            ),
-          ),
-        );
-        bytes.addAll(
-          generator.text(
-            'Mesa ${table.number}',
-            styles: const PosStyles(align: PosAlign.center, bold: true),
-          ),
-        );
+        bytes.addAll(generator.text('Billares Don Miguel', styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2)));
+        bytes.addAll(generator.text('Mesa ${table.number}', styles: const PosStyles(align: PosAlign.center, bold: true)));
         bytes.addAll(generator.hr());
         bytes.addAll(generator.text('Hora de inicio: ${clock(table.start!)}'));
         bytes.addAll(generator.text('Hora finalizada: ${clock(table.end!)}'));
-        bytes.addAll(
-          generator.text(
-            'Tiempo jugado: ${duration(table.end!.difference(table.start!).inSeconds)}',
-          ),
-        );
+        bytes.addAll(generator.text('Tiempo jugado: ${duration(table.end!.difference(table.start!).inSeconds)}'));
         bytes.addAll(generator.text('Tarifa: ${money(table.rate)} / hora'));
         bytes.addAll(generator.hr());
-        bytes.addAll(
-          generator.text(
-            'MONTO A PAGAR',
-            styles: const PosStyles(align: PosAlign.center, bold: true),
-          ),
-        );
-        bytes.addAll(
-          generator.text(
-            money(table.amount),
-            styles: const PosStyles(
-              align: PosAlign.center,
-              bold: true,
-              height: PosTextSize.size2,
-              width: PosTextSize.size2,
-            ),
-          ),
-        );
+        bytes.addAll(generator.text('MONTO A PAGAR', styles: const PosStyles(align: PosAlign.center, bold: true)));
+        bytes.addAll(generator.text(money(table.amount), styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2)));
         bytes.addAll(generator.feed(3));
         bytes.addAll(generator.cut());
-        final bool printed = await PrintBluetoothThermal.writeBytes(bytes);
-        if (!printed) return 'La impresora no aceptó el recibo.';
+        if (!await PrintBluetoothThermal.writeBytes(bytes)) return 'La impresora no aceptó el recibo.';
         return null;
       } finally {
         await PrintBluetoothThermal.disconnect;
@@ -237,36 +136,29 @@ jobs:
     }
   }
 '''
-          source = source[:start] + printer_method + source[end:]
-
-          settings_start = source.find('  void showSettings() {')
-          settings_end = source.find('\n  @override\n  Widget build(BuildContext context)', settings_start)
-          if settings_start < 0 or settings_end < 0:
-              raise SystemExit('No se pudo localizar showSettings')
-          settings = source[settings_start:settings_end]
+          s = s[:a] + method + s[b:]
+          ss = s.find('  void showSettings() {')
+          se = s.find('\n  @override\n  Widget build(BuildContext context)', ss)
+          if ss < 0 or se < 0:
+              raise SystemExit('No se encontró showSettings')
+          settings = s[ss:se]
           if 'configureThermalPrinter' not in settings:
               marker = """              const Text(\n                'Tarifas fijas',\n                style: TextStyle(fontWeight: FontWeight.bold),\n              ),\n"""
-              button = """              const SizedBox(height: 16),\n              OutlinedButton.icon(\n                onPressed: () => configureThermalPrinter(),\n                icon: const Icon(Icons.print_outlined),\n                label: const Text('Impresora térmica'),\n              ),\n"""
+              button = """              const SizedBox(height: 16),\n              OutlinedButton.icon(\n                onPressed: configureThermalPrinter,\n                icon: const Icon(Icons.print_outlined),\n                label: const Text('Impresora térmica'),\n              ),\n"""
               if marker not in settings:
-                  raise SystemExit('No se encontró el bloque de tarifas dentro de showSettings')
-              settings = settings.replace(marker, marker + button, 1)
-              source = source[:settings_start] + settings + source[settings_end:]
-
-          path.write_text(source, encoding='utf-8')
+                  raise SystemExit('No se encontró el bloque de tarifas')
+              s = s[:ss] + settings.replace(marker, marker + button, 1) + s[se:]
+          p.write_text(s, encoding='utf-8')
           PY
-
           dart format lib/main.dart
           flutter pub get
           flutter analyze --fatal-warnings --no-fatal-infos
           flutter test
-
           grep -q "Future<bool> configureThermalPrinter() async" lib/main.dart
           grep -q "thermal_printer_mac" lib/main.dart
           grep -q "thermal_printer_name" lib/main.dart
           grep -q "Impresora térmica" lib/main.dart
-          grep -q "package:print_bluetooth_thermal/print_bluetooth_thermal.dart" lib/main.dart
-
-      - name: Consolidar fuente y retirar este workflow
+      - name: Guardar fuente permanente y retirar workflow
         shell: bash
         run: |
           set -euo pipefail
