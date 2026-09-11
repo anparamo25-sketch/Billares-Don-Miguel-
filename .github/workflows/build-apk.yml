@@ -73,6 +73,18 @@ jobs:
       - name: Instalar dependencias
         run: flutter pub get
 
+      - name: Inicializar plataforma Android del proyecto
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f android/app/build.gradle.kts ]; then
+            echo "La plataforma Android no está versionada; se genera con Flutter ${FLUTTER_VERSION}."
+            flutter create --platforms=android --project-name=billares_don_miguel --org=com.billaresdonmiguel .
+          fi
+          test -f android/app/build.gradle.kts
+          test -f android/app/src/main/AndroidManifest.xml
+          echo "OK: plataforma Android canónica disponible"
+
       - name: Configurar Android para LAN, Bluetooth, actualizaciones y segundo plano
         run: |
           python3 - <<'PY'
@@ -131,6 +143,8 @@ jobs:
 
       - name: Verificar configuración Android
         run: |
+          test -f android/app/build.gradle.kts
+          test -f android/app/src/main/AndroidManifest.xml
           grep -q 'compileSdk = 36' android/app/build.gradle.kts
           grep -q 'ndkVersion = "27.0.12077973"' android/app/build.gradle.kts
           grep -q 'minSdk = 23' android/app/build.gradle.kts
