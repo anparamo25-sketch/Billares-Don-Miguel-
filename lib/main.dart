@@ -836,6 +836,59 @@ class _DashboardPageState extends State<DashboardPage>
     await saveTables();
   }
 
+  Future<bool> configureThermalPrinter() async {
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    if (!mounted) return false;
+    try {
+      if (!await PrintBluetoothThermal.bluetoothEnabled) return false;
+      if (!await PrintBluetoothThermal.isPermissionBluetoothGranted) return false;
+      final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;
+      if (printers.isEmpty) return false;
+      final String? savedMac = prefs.getString('thermal_printer_mac');
+      final String? selectedMac = await showDialog<String>(
+        context: context,
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: const Text('Impresora térmica'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView(
+              shrinkWrap: true,
+              children: printers.map((BluetoothInfo printer) {
+                final bool selected = printer.macAdress == savedMac;
+                return ListTile(
+                  leading: Icon(selected ? Icons.check_circle : Icons.print_outlined),
+                  title: Text(printer.name.isEmpty ? 'Impresora térmica' : printer.name),
+                  subtitle: Text(printer.macAdress),
+                  onTap: () => Navigator.pop(dialogContext, printer.macAdress),
+                );
+              }).toList(),
+            ),
+          ),
+          actions: <Widget>[
+            if (savedMac != null)
+              TextButton(
+                onPressed: () async {
+                  await prefs.remove('thermal_printer_mac');
+                  await prefs.remove('thermal_printer_name');
+                  if (dialogContext.mounted) Navigator.pop(dialogContext, '');
+                },
+                child: const Text('Quitar impresora'),
+              ),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cerrar')),
+          ],
+        ),
+      );
+      if (selectedMac == null) return savedMac != null;
+      if (selectedMac.isEmpty) return false;
+      final BluetoothInfo selected = printers.firstWhere((BluetoothInfo p) => p.macAdress == selectedMac);
+      await prefs.setString('thermal_printer_mac', selected.macAdress);
+      await prefs.setString('thermal_printer_name', selected.name);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<String?> printReceipt(BillTable table) async {
     if (table.start == null || table.end == null) {
       return 'La partida no tiene datos completos para imprimir.';
@@ -853,10 +906,15 @@ class _DashboardPageState extends State<DashboardPage>
       if (printers.isEmpty) {
         return 'No hay impresoras Bluetooth emparejadas con la tablet.';
       }
-      final BluetoothInfo printer = printers.first;
-      final bool connected = await PrintBluetoothThermal.connect(
-        macPrinterAddress: printer.macAdress,
-      );
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? savedMac = prefs.getString('thermal_printer_mac');
+      if (savedMac == null || savedMac.isEmpty) return 'Configura primero la impresora térmica desde Configuración.';
+      BluetoothInfo? printer;
+      for (final BluetoothInfo item in printers) {
+        if (item.macAdress == savedMac) { printer = item; break; }
+      }
+      if (printer == null) return 'La impresora guardada ya no está emparejada. Ve a Configuración → Impresora térmica.';
+      final bool connected = await PrintBluetoothThermal.connect(macPrinterAddress: printer.macAdress);
       if (!connected) return 'No se pudo conectar con la impresora.';
 
       final CapabilityProfile profile = await CapabilityProfile.load();
@@ -1742,6 +1800,15 @@ class _DashboardPageState extends State<DashboardPage>
               const SizedBox(height: 12),
               const Text(
                 'Las tarifas no pueden modificarse desde el administrador.',
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await configureThermalPrinter();
+                },
+                icon: const Icon(Icons.print_outlined),
+                label: const Text('Impresora térmica'),
               ),
               const SizedBox(height: 16),
               if (lanIp != null) Text('Receptor TV: http://$lanIp:8080/tv'),
