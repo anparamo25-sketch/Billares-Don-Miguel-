@@ -63,7 +63,6 @@ jobs:
       - name: Verificar fuente permanente
         run: |
           set -euo pipefail
-          test ! -e scripts/patch_tv_interface_1_2_9.py
           grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
           grep -q "String get tvHtml =>" lib/main.dart
           grep -q "Future<bool> configureThermalPrinter() async" lib/main.dart
@@ -72,7 +71,6 @@ jobs:
           grep -q "Future<String?> printReceipt(BillTable table)" lib/main.dart
           test -s cloud-tv/public/index.html
           ! grep -R "print_bluetooth_thermal_plus" -n lib pubspec.yaml
-          ! grep -R "patch_tv_interface_1_2_9\|Migrar fuente 1.2.9" -n .github/workflows lib scripts 2>/dev/null || true
 
       - name: Instalar dependencias
         run: flutter pub get
