@@ -1,1 +1,1 @@
-thermal-printer-integration-20260911-3
+thermal-printer-source-verification-20260911-final
