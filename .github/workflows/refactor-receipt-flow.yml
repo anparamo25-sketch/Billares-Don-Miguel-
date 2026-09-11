@@ -37,11 +37,7 @@ jobs:
               marker = "import 'cloud_tv_sync.dart';"
               if text.count(marker) != 1:
                   raise SystemExit('No se encontró exactamente el import de cloud_tv_sync.dart.')
-              text = text.replace(
-                  marker,
-                  marker + "\nimport 'receipt_preview_page.dart';",
-                  1,
-              )
+              text = text.replace(marker, marker + "\nimport 'receipt_preview_page.dart';", 1)
 
           new_print = r'''  Future<String?> printReceipt(BillTable table) async {
     if (table.start == null || table.end == null) {
@@ -49,84 +45,31 @@ jobs:
     }
     try {
       final bool enabled = await PrintBluetoothThermal.bluetoothEnabled;
-      if (!enabled) {
-        return 'Activa Bluetooth en la tablet para imprimir.';
-      }
-      final bool permission =
-          await PrintBluetoothThermal.isPermissionBluetoothGranted;
-      if (!permission) {
-        return 'Concede el permiso de Bluetooth y vuelve a intentar.';
-      }
-      final List<BluetoothInfo> printers =
-          await PrintBluetoothThermal.pairedBluetooths;
-      if (printers.isEmpty) {
-        return 'No hay impresoras Bluetooth emparejadas con la tablet.';
-      }
-
-      // La impresión se ejecuta directamente contra la impresora emparejada
-      // disponible. No se abre un selector durante el flujo de cobro.
+      if (!enabled) return 'Activa Bluetooth en la tablet para imprimir.';
+      final bool permission = await PrintBluetoothThermal.isPermissionBluetoothGranted;
+      if (!permission) return 'Concede el permiso de Bluetooth y vuelve a intentar.';
+      final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;
+      if (printers.isEmpty) return 'No hay impresoras Bluetooth emparejadas con la tablet.';
       final BluetoothInfo printer = printers.first;
-      final bool connected = await PrintBluetoothThermal.connect(
-        macPrinterAddress: printer.macAdress,
-      );
-      if (!connected) {
-        return 'No se pudo conectar con la impresora.';
-      }
-
+      final bool connected = await PrintBluetoothThermal.connect(macPrinterAddress: printer.macAdress);
+      if (!connected) return 'No se pudo conectar con la impresora.';
       final CapabilityProfile profile = await CapabilityProfile.load();
       final Generator generator = Generator(PaperSize.mm58, profile);
       final List<int> bytes = <int>[];
-      bytes.addAll(
-        generator.text(
-          'Billares Don Miguel',
-          styles: const PosStyles(
-            align: PosAlign.center,
-            bold: true,
-            height: PosTextSize.size2,
-            width: PosTextSize.size2,
-          ),
-        ),
-      );
-      bytes.addAll(
-        generator.text(
-          'Mesa ${table.number}',
-          styles: const PosStyles(align: PosAlign.center, bold: true),
-        ),
-      );
+      bytes.addAll(generator.text('Billares Don Miguel', styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2)));
+      bytes.addAll(generator.text('Mesa ${table.number}', styles: const PosStyles(align: PosAlign.center, bold: true)));
       bytes.addAll(generator.hr());
       bytes.addAll(generator.text('Hora de inicio: ${clock(table.start!)}'));
       bytes.addAll(generator.text('Hora finalizada: ${clock(table.end!)}'));
-      bytes.addAll(
-        generator.text(
-          'Tiempo jugado: ${duration(table.end!.difference(table.start!).inSeconds)}',
-        ),
-      );
+      bytes.addAll(generator.text('Tiempo jugado: ${duration(table.end!.difference(table.start!).inSeconds)}'));
       bytes.addAll(generator.text('Tarifa: ${money(table.rate)} / hora'));
       bytes.addAll(generator.hr());
-      bytes.addAll(
-        generator.text(
-          'MONTO A PAGAR',
-          styles: const PosStyles(align: PosAlign.center, bold: true),
-        ),
-      );
-      bytes.addAll(
-        generator.text(
-          money(table.amount),
-          styles: const PosStyles(
-            align: PosAlign.center,
-            bold: true,
-            height: PosTextSize.size2,
-            width: PosTextSize.size2,
-          ),
-        ),
-      );
+      bytes.addAll(generator.text('MONTO A PAGAR', styles: const PosStyles(align: PosAlign.center, bold: true)));
+      bytes.addAll(generator.text(money(table.amount), styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2)));
       bytes.addAll(generator.feed(3));
       bytes.addAll(generator.cut());
-
       final bool printed = await PrintBluetoothThermal.writeBytes(bytes);
-      if (!printed) {
-        return 'La impresora no aceptó el recibo.';
-      }
+      if (!printed) return 'La impresora no aceptó el recibo.';
       return null;
     } catch (_) {
       return 'No se pudo imprimir el recibo.';
@@ -134,46 +77,26 @@ jobs:
   }
 
 '''
-          pattern_print = re.compile(
-              r"  Future<void> printReceipt\(BillTable table\) async \{.*?\n  \}\n\n  Future<void> collect",
-              re.S,
-          )
-          match_print = pattern_print.search(text)
-          if not match_print:
+          text, count = re.subn(r"  Future<void> printReceipt\(BillTable table\) async \{.*?\n  \}\n\n  Future<void> collect", new_print + '  Future<void> collect', text, count=1, flags=re.S)
+          if count != 1:
               raise SystemExit('No se encontró exactamente la implementación actual de printReceipt.')
-          text = text[:match_print.start()] + new_print + '  Future<void> collect' + text[match_print.end():]
 
           new_collect = r'''  Future<void> collect(BillTable table) async {
-    if (table.status != TableStatus.pending ||
-        table.start == null ||
-        table.end == null ||
-        !mounted) {
-      return;
-    }
-
+    if (table.status != TableStatus.pending || table.start == null || table.end == null || !mounted) return;
     final bool? printed = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
-        builder:
-            (_) => ReceiptPreviewPage(
-              tableNumber: table.number,
-              startText: clock(table.start!),
-              endText: clock(table.end!),
-              durationText: duration(
-                table.end!.difference(table.start!).inSeconds,
-              ),
-              rateText: '${money(table.rate)} / hora',
-              amountText: money(table.amount),
-              onPrint: () async {
-                final String? error = await printReceipt(table);
-                return error;
-              },
-            ),
+        builder: (_) => ReceiptPreviewPage(
+          tableNumber: table.number,
+          startText: clock(table.start!),
+          endText: clock(table.end!),
+          durationText: duration(table.end!.difference(table.start!).inSeconds),
+          rateText: '${money(table.rate)} / hora',
+          amountText: money(table.amount),
+          onPrint: () async => printReceipt(table),
+        ),
       ),
     );
-
-    // El cobro solo se confirma después de una impresión aceptada.
     if (printed != true || !mounted) return;
-
     final HistoryEntry entry = HistoryEntry(
       table: table.number,
       start: table.start!,
@@ -199,24 +122,16 @@ jobs:
   }
 
 '''
-          pattern_collect = re.compile(
-              r"  Future<void> collect\(BillTable table\) async \{.*?\n  \}\n\n  int buildNumber",
-              re.S,
-          )
-          match_collect = pattern_collect.search(text)
-          if not match_collect:
+          text, count = re.subn(r"  Future<void> collect\(BillTable table\) async \{.*?\n  \}\n\n  int buildNumber", new_collect + '  int buildNumber', text, count=1, flags=re.S)
+          if count != 1:
               raise SystemExit('No se encontró exactamente la implementación actual de collect.')
-          text = text[:match_collect.start()] + new_collect + '  int buildNumber' + text[match_collect.end():]
 
-          pattern_button = re.compile(
-              r"            if \(table\.status == TableStatus\.pending\) \.\.\.<Widget>\[.*?            \],\n",
-              re.S,
-          )
-          match_button = pattern_button.search(text)
-          if not match_button:
+          text, count = re.subn(r"            if \(table\.status == TableStatus\.pending\) \.\.\.<Widget>\[.*?            \],\n", '', text, count=1, flags=re.S)
+          if count != 1:
               raise SystemExit('No se encontró el botón independiente de imprimir recibo.')
-          text = text[:match_button.start()] + text[match_button.end():]
 
+          if "const String appVersion = '1.2.9+129';" not in text:
+              raise SystemExit('La versión esperada 1.2.9+129 no está presente; se detiene para no alterar otra versión.')
           text = text.replace("const String appVersion = '1.2.9+129';", "const String appVersion = '1.2.10+130';", 1)
           main_path.write_text(text, encoding='utf-8')
 
@@ -248,3 +163,5 @@ jobs:
           git add lib/main.dart lib/receipt_preview_page.dart pubspec.yaml
           git commit -m 'feat: cobro con vista previa e impresión obligatoria'
           git push
+
+# Refactor fuente controlado y verificable; no modifica el diseño de la TV.
