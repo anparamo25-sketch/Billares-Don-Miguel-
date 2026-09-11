@@ -2,8 +2,7 @@ name: Correccion directa impresora termica
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: write
@@ -32,148 +31,19 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import base64
           import re
           path = Path('lib/main.dart')
           source = path.read_text(encoding='utf-8')
           start = source.index('  Future<String?> printReceipt(BillTable table) async {')
           end = source.index('  Future<void> collect(BillTable table) async {', start)
-          printer_code = '''  Future<bool> configureThermalPrinter() async {
-  if (!mounted) return false;
-  try {
-    final bool enabled = await PrintBluetoothThermal.bluetoothEnabled;
-    if (!enabled) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Activa Bluetooth en la tablet para configurar la impresora.')));
-      return false;
-    }
-    final bool permission = await PrintBluetoothThermal.isPermissionBluetoothGranted;
-    if (!permission) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Concede el permiso de Bluetooth y vuelve a abrir la configuración.')));
-      return false;
-    }
-    final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;
-    if (printers.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No hay impresoras térmicas Bluetooth emparejadas con esta tablet.')));
-      return false;
-    }
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? savedMac = prefs.getString('thermal_printer_mac');
-    BluetoothInfo? selected;
-    for (final BluetoothInfo printer in printers) {
-      if (printer.macAdress == savedMac) selected = printer;
-    }
-    final BluetoothInfo? result = await showDialog<BluetoothInfo>(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        BluetoothInfo? current = selected;
-        return StatefulBuilder(
-          builder: (BuildContext context, void Function(void Function()) setDialogState) {
-            return AlertDialog(
-              title: const Text('Impresora térmica'),
-              content: SizedBox(
-                width: 420,
-                child: ListView(
-                  shrinkWrap: true,
-                  children: printers.map((BluetoothInfo printer) => RadioListTile<String>(
-                    value: printer.macAdress,
-                    groupValue: current?.macAdress,
-                    onChanged: (String? value) {
-                      if (value == null) return;
-                      for (final BluetoothInfo item in printers) {
-                        if (item.macAdress == value) current = item;
-                      }
-                      setDialogState(() {});
-                    },
-                    title: Text(printer.name.isEmpty ? 'Impresora térmica' : printer.name),
-                    subtitle: Text(printer.macAdress),
-                  )).toList(),
-                ),
-              ),
-              actions: <Widget>[
-                TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('CANCELAR')),
-                FilledButton(onPressed: current == null ? null : () => Navigator.pop(dialogContext, current), child: const Text('GUARDAR')),
-              ],
-            );
-          },
-        );
-      },
-    );
-    if (result == null) return false;
-    await prefs.setString('thermal_printer_name', result.name);
-    await prefs.setString('thermal_printer_mac', result.macAdress);
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Impresora guardada: ${result.name.isEmpty ? result.macAdress : result.name}')));
-    return true;
-  } catch (_) {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir la configuración de la impresora térmica.')));
-    return false;
-  }
-}
-
-Future<String?> printReceipt(BillTable table) async {
-  if (table.start == null || table.end == null) return 'La partida no tiene datos completos para imprimir.';
-  final SharedPreferences prefs = await SharedPreferences.getInstance();
-  final String? savedMac = prefs.getString('thermal_printer_mac');
-  final String savedName = prefs.getString('thermal_printer_name') ?? '';
-  if (savedMac == null || savedMac.isEmpty) return 'Configura primero la impresora térmica en Configuración.';
-  try {
-    final bool enabled = await PrintBluetoothThermal.bluetoothEnabled;
-    if (!enabled) return 'Activa Bluetooth en la tablet para imprimir.';
-    final bool permission = await PrintBluetoothThermal.isPermissionBluetoothGranted;
-    if (!permission) return 'Concede el permiso de Bluetooth y vuelve a intentar.';
-    final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;
-    bool paired = false;
-    for (final BluetoothInfo printer in printers) {
-      if (printer.macAdress == savedMac) paired = true;
-    }
-    if (!paired) return 'La impresora ${savedName.isEmpty ? savedMac : savedName} ya no está emparejada. Configura o cambia la impresora.';
-    final bool connected = await PrintBluetoothThermal.connect(macPrinterAddress: savedMac);
-    if (!connected) return 'No se pudo conectar con la impresora guardada.';
-    try {
-      final CapabilityProfile profile = await CapabilityProfile.load();
-      final Generator generator = Generator(PaperSize.mm58, profile);
-      final List<int> bytes = <int>[];
-      bytes.addAll(generator.text('Billares Don Miguel', styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2)));
-      bytes.addAll(generator.text('Mesa ${table.number}', styles: const PosStyles(align: PosAlign.center, bold: true)));
-      bytes.addAll(generator.hr());
-      bytes.addAll(generator.text('Hora de inicio: ${clock(table.start!)}'));
-      bytes.addAll(generator.text('Hora finalizada: ${clock(table.end!)}'));
-      bytes.addAll(generator.text('Tiempo jugado: ${duration(table.end!.difference(table.start!).inSeconds)}'));
-      bytes.addAll(generator.text('Tarifa: ${money(table.rate)} / hora'));
-      bytes.addAll(generator.hr());
-      bytes.addAll(generator.text('MONTO A PAGAR', styles: const PosStyles(align: PosAlign.center, bold: true)));
-      bytes.addAll(generator.text(money(table.amount), styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2)));
-      bytes.addAll(generator.feed(3));
-      bytes.addAll(generator.cut());
-      final bool printed = await PrintBluetoothThermal.writeBytes(bytes);
-      if (!printed) return 'La impresora no aceptó el recibo.';
-      return null;
-    } finally {
-      await PrintBluetoothThermal.disconnect;
-    }
-  } catch (_) {
-    return 'No se pudo imprimir el recibo.';
-  }
-}
-'''
-          source = source[:start] + printer_code + source[end:]
-          pattern = re.compile(r"  void showSettings\(\) \{.*?children: <Widget>\[", re.S)
-          if not pattern.search(source):
-            raise SystemExit('No se encontró showSettings.')
-          button = """              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  final bool saved = await configureThermalPrinter();
-                  if (saved && context.mounted) Navigator.pop(context);
-                },
-                icon: const Icon(Icons.print_outlined),
-                label: const Text('Impresora térmica'),
-              ),
-"""
-          target = """              const SizedBox(height: 8),
-              const Text('Mesas 1 y 2: C\\$120 por hora'),
-"""
-          if target not in source:
-            raise SystemExit('No se encontró el inicio del bloque de tarifas.')
-          source = source.replace(target, button + target, 1)
+          printer = base64.b64decode('ICBGdXR1cmU8Ym9vbD4gY29uZmlndXJlVGhlcm1hbFByaW50ZXIoKSBhc3luYyB7CiAgICBpZiAoIW1vdW50ZWQpIHJldHVybiBmYWxzZTsKICAgIHRyeSB7CiAgICAgIGZpbmFsIGJvb2wgZW5hYmxlZCA9IGF3YWl0IFByaW50Qmx1ZXRvb3RoVGhlcm1hbC5ibHVldG9vdGhFbmFibGVkOwogICAgICBpZiAoIWVuYWJsZWQpIHsKICAgICAgICBTY2FmZm9sZE1lc3Nlbmdlci5vZihjb250ZXh0KS5zaG93U25hY2tCYXIoCiAgICAgICAgICBjb25zdCBTbmFja0Jhcihjb250ZW50OiBUZXh0KCdBY3RpdmEgQmx1ZXRvb3RoIGVuIGxhIHRhYmxldCBwYXJhIGNvbmZpZ3VyYXIgbGEgaW1wcmVzb3JhLicpKSwKICAgICAgICApOwogICAgICAgIHJldHVybiBmYWxzZTsKICAgICAgfQogICAgICBmaW5hbCBib29sIHBlcm1pc3Npb24gPSBhd2FpdCBQcmludEJsdWV0b290aFRoZXJtYWwuaXNQZXJtaXNzaW9uQmx1ZXRvb3RoR3JhbnRlZDsKICAgICAgaWYgKCFwZXJtaXNzaW9uKSB7CiAgICAgICAgU2NhZmZvbGRNZXNzZW5nZXIub2YoY29udGV4dCkuc2hvd1NuYWNrQmFyKAogICAgICAgICAgY29uc3QgU25hY2tCYXIoY29udGVudDogVGV4dCgnQ29uY2VkZSBlbCBwZXJtaXNvIGRlIEJsdWV0b290aCB5IHZ1ZWx2ZSBhIGFicmlyIGxhIGNvbmZpZ3VyYWNpw7NuLicpKSwKICAgICAgICApOwogICAgICAgIHJldHVybiBmYWxzZTsKICAgICAgfQogICAgICBmaW5hbCBMaXN0PEJsdWV0b290aEluZm8+IHByaW50ZXJzID0gYXdhaXQgUHJpbnRCbHVldG9vdGhUaGVybWFsLnBhaXJlZEJsdWV0b290aHM7CiAgICAgIGlmIChwcmludGVycy5pc0VtcHR5KSB7CiAgICAgICAgU2NhZmZvbGRNZXNzZW5nZXIub2YoY29udGV4dCkuc2hvd1NuYWNrQmFyKAogICAgICAgICAgY29uc3QgU25hY2tCYXIoY29udGVudDogVGV4dCgnTm8gaGF5IGltcHJlc29yYXMgdMOpcm1pY2FzIEJsdWV0b290aCBlbXBhcmVqYWRhcyBjb24gZXN0YSB0YWJsZXQuJykpLAogICAgICAgICk7CiAgICAgICAgcmV0dXJuIGZhbHNlOwogICAgICB9CiAgICAgIGZpbmFsIFNoYXJlZFByZWZlcmVuY2VzIHByZWZzID0gYXdhaXQgU2hhcmVkUHJlZmVyZW5jZXMuZ2V0SW5zdGFuY2UoKTsKICAgICAgZmluYWwgU3RyaW5nPyBzYXZlZE1hYyA9IHByZWZzLmdldFN0cmluZygndGhlcm1hbF9wcmludGVyX21hYycpOwogICAgICBCbHVldG9vdGhJbmZvPyBzZWxlY3RlZDsKICAgICAgZm9yIChmaW5hbCBCbHVldG9vdGhJbmZvIHByaW50ZXIgaW4gcHJpbnRlcnMpIHsKICAgICAgICBpZiAocHJpbnRlci5tYWNBZHJlc3MgPT0gc2F2ZWRNYWMpIHNlbGVjdGVkID0gcHJpbnRlcjsKICAgICAgfQogICAgICBmaW5hbCBCbHVldG9vdGhJbmZvPyByZXN1bHQgPSBhd2FpdCBzaG93RGlhbG9nPEJsdWV0b290aEluZm8+KAogICAgICAgIGNvbnRleHQ6IGNvbnRleHQsCiAgICAgICAgYnVpbGRlcjogKEJ1aWxkQ29udGV4dCBkaWFsb2dDb250ZXh0KSB7CiAgICAgICAgICBCbHVldG9vdGhJbmZvPyBjdXJyZW50ID0gc2VsZWN0ZWQ7CiAgICAgICAgICByZXR1cm4gU3RhdGVmdWxCdWlsZGVyKAogICAgICAgICAgICBidWlsZGVyOiAoQnVpbGRDb250ZXh0IGNvbnRleHQsIHZvaWQgRnVuY3Rpb24odm9pZCBGdW5jdGlvbigpKSBzZXREaWFsb2dTdGF0ZSkgewogICAgICAgICAgICAgIHJldHVybiBBbGVydERpYWxvZygKICAgICAgICAgICAgICAgIHRpdGxlOiBjb25zdCBUZXh0KCdJbXByZXNvcmEgdMOpcm1pY2EnKSwKICAgICAgICAgICAgICAgIGNvbnRlbnQ6IFNpemVkQm94KAogICAgICAgICAgICAgICAgICB3aWR0aDogNDIwLAogICAgICAgICAgICAgICAgICBjaGlsZDogTGlzdFZpZXcoCiAgICAgICAgICAgICAgICAgICAgc2hyaW5rV3JhcDogdHJ1ZSwKICAgICAgICAgICAgICAgICAgICBjaGlsZHJlbjogcHJpbnRlcnMubWFwKChCbHVldG9vdGhJbmZvIHByaW50ZXIpID0+IFJhZGlvTGlzdFRpbGU8U3RyaW5nPigKICAgICAgICAgICAgICAgICAgICAgIHZhbHVlOiBwcmludGVyLm1hY0FkcmVzcywKICAgICAgICAgICAgICAgICAgICAgIGdyb3VwVmFsdWU6IGN1cnJlbnQ/Lm1hY0FkcmVzcywKICAgICAgICAgICAgICAgICAgICAgIG9uQ2hhbmdlZDogKFN0cmluZz8gdmFsdWUpIHsKICAgICAgICAgICAgICAgICAgICAgICAgaWYgKHZhbHVlID09IG51bGwpIHJldHVybjsKICAgICAgICAgICAgICAgICAgICAgICAgZm9yIChmaW5hbCBCbHVldG9vdGhJbmZvIGl0ZW0gaW4gcHJpbnRlcnMpIHsKICAgICAgICAgICAgICAgICAgICAgICAgICBpZiAoaXRlbS5tYWNBZHJlc3MgPT0gdmFsdWUpIGN1cnJlbnQgPSBpdGVtOwogICAgICAgICAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICAgICAgICAgIHNldERpYWxvZ1N0YXRlKCgpIHt9KTsKICAgICAgICAgICAgICAgICAgICAgIH0sCiAgICAgICAgICAgICAgICAgICAgICB0aXRsZTogVGV4dChwcmludGVyLm5hbWUuaXNFbXB0eSA/ICdJbXByZXNvcmEgdMOpcm1pY2EnIDogcHJpbnRlci5uYW1lKSwKICAgICAgICAgICAgICAgICAgICAgIHN1YnRpdGxlOiBUZXh0KHByaW50ZXIubWFjQWRyZXNzKSwKICAgICAgICAgICAgICAgICAgICApKS50b0xpc3QoKSwKICAgICAgICAgICAgICAgICAgKSwKICAgICAgICAgICAgICAgICksCiAgICAgICAgICAgICAgICBhY3Rpb25zOiA8V2lkZ2V0PlsKICAgICAgICAgICAgICAgICAgVGV4dEJ1dHRvbigKICAgICAgICAgICAgICAgICAgICBvblByZXNzZWQ6ICgpID0+IE5hdmlnYXRvci5wb3AoZGlhbG9nQ29udGV4dCksCiAgICAgICAgICAgICAgICAgICAgY2hpbGQ6IGNvbnN0IFRleHQoJ0NBTkNFTEFSJyksCiAgICAgICAgICAgICAgICAgICksCiAgICAgICAgICAgICAgICAgIEZpbGxlZEJ1dHRvbigKICAgICAgICAgICAgICAgICAgICBvblByZXNzZWQ6IGN1cnJlbnQgPT0gbnVsbCA/IG51bGwgOiAoKSA9PiBOYXZpZ2F0b3IucG9wKGRpYWxvZ0NvbnRleHQsIGN1cnJlbnQpLAogICAgICAgICAgICAgICAgICAgIGNoaWxkOiBjb25zdCBUZXh0KCdHVUFSREFSJyksCiAgICAgICAgICAgICAgICAgICksCiAgICAgICAgICAgICAgICBdLAogICAgICAgICAgICAgICk7CiAgICAgICAgICAgIH0sCiAgICAgICAgICApOwogICAgICAgIH0sCiAgICAgICk7CiAgICAgIGlmIChyZXN1bHQgPT0gbnVsbCkgcmV0dXJuIGZhbHNlOwogICAgICBhd2FpdCBwcmVmcy5zZXRTdHJpbmcoJ3RoZXJtYWxfcHJpbnRlcl9uYW1lJywgcmVzdWx0Lm5hbWUpOwogICAgICBhd2FpdCBwcmVmcy5zZXRTdHJpbmcoJ3RoZXJtYWxfcHJpbnRlcl9tYWNyLCByZXN1bHQubWFjQWRyZXNzKTsKICAgICAgaWYgKG1vdW50ZWQpIHsKICAgICAgICBTY2FmZm9sZE1lc3Nlbmdlci5vZihjb250ZXh0KS5zaG93U25hY2tCYXIoCiAgICAgICAgICBTbmFja0JhcigKICAgICAgICAgICAgY29udGVudDogVGV4dCgKICAgICAgICAgICAgICAnSW1wcmVzb3JhIGd1YXJkYWRhOiAke3Jlc3VsdC5uYW1lLmlzRW1wdHkgPyByZXN1bHQubWFjQWRyZXNzIDogcmVzdWx0Lm5hbWV9JywKICAgICAgICAgICAgKSwKICAgICAgICAgICksCiAgICAgICAgKTsKICAgICAgfQogICAgICByZXR1cm4gdHJ1ZTsKICAgIH0gY2F0Y2ggKF8pIHsKICAgICAgaWYgKG1vdW50ZWQpIHsKICAgICAgICBTY2FmZm9sZE1lc3Nlbmdlci5vZihjb250ZXh0KS5zaG93U25hY2tCYXIoCiAgICAgICAgICBjb25zdCBTbmFja0Jhcihjb250ZW50OiBUZXh0KCdObyBzZSBwdWRvIGFicmlyIGxhIGNvbmZpZ3VyYWNpw7NuIGRlIGxhIGltcHJlc29yYSB0w6lybWljYS4nKSksCiAgICAgICAgKTsKICAgICAgfQogICAgICByZXR1cm4gZmFsc2U7CiAgICB9CiAgfQoKICBGdXR1cmU8U3RyaW5nPz4gcHJpbnRSZWNlaXB0KEJpbGxUYWJsZSB0YWJsZSkgYXN5bmMgewogICAgaWYgKHRhYmxlLnN0YXJ0ID09IG51bGwgfHwgdGFibGUuZW5kID09IG51bGwpIHsKICAgICAgcmV0dXJuICdMYSBwYXJ0aWRhIG5vIHRpZW5lIGRhdG9zIGNvbXBsZXRvcyBwYXJhIGltcHJpbWlyLic7CiAgICB9CiAgICBmaW5hbCBTaGFyZWRQcmVmZXJlbmNlcyBwcmVmcyA9IGF3YWl0IFNoYXJlZFByZWZlcmVuY2VzLmdldEluc3RhbmNlKCk7CiAgICBmaW5hbCBTdHJpbmc/IHNhdmVkTWFjID0gcHJlZnMuZ2V0U3RyaW5nKCd0aGVybWFsX3ByaW50ZXJfbWFjJyk7CiAgICBmaW5hbCBTdHJpbmcgc2F2ZWROYW1lID0gcHJlZnMuZ2V0U3RyaW5nKCd0aGVybWFsX3ByaW50ZXJfbmFtZScpID8/ICcnOwogICAgaWYgKHNhdmVkTWFjID09IG51bGwgfHwgc2F2ZWRNYWMuaXNFbXB0eSkgewogICAgICByZXR1cm4gJ0NvbmZpZ3VyYSBwcmltZXJvIGxhIGltcHJlc29yYSB0w6lybWljYSBlbiBDb25maWd1cmFjacOzbi4nOwogICAgfQogICAgdHJ5IHsKICAgICAgZmluYWwgYm9vbCBlbmFibGVkID0gYXdhaXQgUHJpbnRCbHVldG9vdGhUaGVybWFsLmJsdWV0b290aEVuYWJsZWQ7CiAgICAgIGlmICghZW5hYmxlZCkgcmV0dXJuICdBY3RpdmEgQmx1ZXRvb3RoIGVuIGxhIHRhYmxldCBwYXJhIGltcHJpbWlyLic7CiAgICAgIGZpbmFsIGJvb2wgcGVybWlzc2lvbiA9IGF3YWl0IFByaW50Qmx1ZXRvb3RoVGhlcm1hbC5pc1Blcm1pc3Npb25CbHVldG9vdGhHcmFudGVkOwogICAgICBpZiAoIXBlcm1pc3Npb24pIHJldHVybiAnQ29uY2VkZSBlbCBwZXJtaXNvIGRlIEJsdWV0b290aCB5IHZ1ZWx2ZSBhIGludGVudGFyLic7CiAgICAgIGZpbmFsIExpc3Q8Qmx1ZXRvb3RoSW5mbz4gcHJpbnRlcnMgPSBhd2FpdCBQcmludEJsdWV0b290aFRoZXJtYWwucGFpcmVkQmx1ZXRvb3RoczsKICAgICAgYm9vbCBwYWlyZWQgPSBmYWxzZTsKICAgICAgZm9yIChmaW5hbCBCbHVldG9vdGhJbmZvIHByaW50ZXIgaW4gcHJpbnRlcnMpIHsKICAgICAgICBpZiAocHJpbnRlci5tYWNBZHJlc3MgPT0gc2F2ZWRNYWMpIHBhaXJlZCA9IHRydWU7CiAgICAgIH0KICAgICAgaWYgKCFwYWlyZWQpIHsKICAgICAgICByZXR1cm4gJ0xhIGltcHJlc29yYSAke3NhdmVkTmFtZS5pc0VtcHR5ID8gc2F2ZWRNYWMgOiBzYXZlZE5hbWV9IHlhIG5vIGVzdMOhIGVtcGFyZWphZGEuIENvbmZpZ3VyYSBvIGNhbWJpYSBsYSBpbXByZXNvcmEuJzsKICAgICAgfQogICAgICBmaW5hbCBib29sIGNvbm5lY3RlZCA9IGF3YWl0IFByaW50Qmx1ZXRvb3RoVGhlcm1hbC5jb25uZWN0KG1hY1ByaW50ZXJBZGRyZXNzOiBzYXZlZE1hYyk7CiAgICAgIGlmICghY29ubmVjdGVkKSByZXR1cm4gJ05vIHNlIHB1ZG8gY29uZWN0YXIgY29uIGxhIGltcHJlc29yYSBndWFyZGFhLi4u';
+          source = source[:start] + printer.decode('utf-8') + source[end:]
+          button = base64.b64decode('ICAgICAgICAgICAgICBjb25zdCBTaXplZEJveChoZWlnaHQ6IDE2KSwKICAgICAgICAgICAgICBPdXRsaW5lZEJ1dHRvbi5pY29uKAogICAgICAgICAgICAgICAgb25QcmVzc2VkOiAoKSBhc3luYyB7CiAgICAgICAgICAgICAgICAgIGZpbmFsIGJvb2wgc2F2ZWQgPSBhd2FpdCBjb25maWd1cmVUaGVybWFsUHJpbnRlcigpOwogICAgICAgICAgICAgICAgICBpZiAoc2F2ZWQgJiYgY29udGV4dC5tb3VudGVkKSBOYXZpZ2F0b3IucG9wKGNvbnRleHQpOwogICAgICAgICAgICAgICAgfSwKICAgICAgICAgICAgICAgIGljb246IGNvbnN0IEljb24oSWNvbnMucHJpbnRfb3V0bGluZWQpLAogICAgICAgICAgICAgICAgbGFiZWw6IGNvbnN0IFRleHQoJ0ltcHJlc29yYSB0w6lybWljYScpLAogICAgICAgICAgICAgICksCg==').decode('utf-8')
+          pattern = re.compile(r"(const Text\(\s*'Tarifas fijas',\s*style: TextStyle\(fontWeight: FontWeight\.bold\),\s*\),)", re.S)
+          source, count = pattern.subn(r'\1\n' + button, source, count=1)
+          if count != 1:
+            raise SystemExit('No se encontró el bloque de configuración de tarifas.')
           path.write_text(source, encoding='utf-8')
           PY
           dart format lib/main.dart
