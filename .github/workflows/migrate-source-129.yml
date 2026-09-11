@@ -12,7 +12,6 @@ env:
 
 jobs:
   migrate:
-    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -40,7 +39,6 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           pubspec = Path('pubspec.yaml')
           pub = pubspec.read_text(encoding='utf-8')
@@ -66,19 +64,17 @@ jobs:
                   money(todayTotal),
                   Icons.attach_money,
                 ),'''
-          if metrics in source:
-              source = source.replace(
-                  metrics,
-                  '''                metricCard(
+          if metrics not in source:
+              raise SystemExit('No se encontró exactamente el bloque de métricas esperado.')
+          source = source.replace(
+              metrics,
+              '''                metricCard(
                   'Generado hoy',
                   money(todayTotal),
                   Icons.attach_money,
                 ),''',
-                  1,
-              )
-          else:
-              raise SystemExit('No se encontró exactamente el bloque de métricas esperado.')
-
+              1,
+          )
           main.write_text(source, encoding='utf-8')
 
           workflow = Path('.github/workflows/build-apk.yml')
