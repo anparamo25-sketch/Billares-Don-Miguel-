@@ -39,10 +39,7 @@ jobs:
           pubspec = Path('pubspec.yaml')
           pub = pubspec.read_text(encoding='utf-8')
           pub = pub.replace('flutter: ">=3.29.0"', 'flutter: ">=3.44.0"')
-          pub = pub.replace(
-              'print_bluetooth_thermal_plus: ^1.0.0',
-              'print_bluetooth_thermal: ^1.2.4',
-          )
+          pub = pub.replace('print_bluetooth_thermal_plus: ^1.0.0', 'print_bluetooth_thermal: ^1.2.4')
           pubspec.write_text(pub, encoding='utf-8')
 
           main = Path('lib/main.dart')
@@ -60,7 +57,6 @@ jobs:
           source, removed = pattern.subn('\n', source, count=1)
           if removed != 1:
               raise SystemExit(f'No se pudo eliminar el bloque de métricas superior; coincidencias={removed}')
-
           main.write_text(source, encoding='utf-8')
 
           workflow = Path('.github/workflows/build-apk.yml')
@@ -70,7 +66,7 @@ jobs:
           workflow.write_text(build, encoding='utf-8')
           PY
 
-          dart format lib/main.dart lib/receipt_preview_page.dart
+          dart format lib test
           flutter pub get
           grep -q "flutter: \">=3.44.0\"" pubspec.yaml
           grep -q "print_bluetooth_thermal: ^1.2.4" pubspec.yaml
@@ -94,6 +90,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm scripts/patch_tv_interface_1_2_9.py .github/workflows/finalize-source-129.yml
-          git add pubspec.yaml pubspec.lock lib/main.dart .github/workflows/build-apk.yml
+          git add pubspec.yaml pubspec.lock lib/main.dart lib/receipt_preview_page.dart .github/workflows/build-apk.yml
           git commit -m "Consolida fuente TV e impresora Bluetooth en 1.2.9"
           git push origin HEAD:main
