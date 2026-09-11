@@ -46,7 +46,6 @@ jobs:
               'package:print_bluetooth_thermal_plus/print_bluetooth_thermal.dart',
               'package:print_bluetooth_thermal/print_bluetooth_thermal.dart',
           )
-
           old = """                metricCard(\n                  'Disponibles',\n                  '$available',\n                  Icons.check_circle_outline,\n                ),\n                metricCard('En juego', '$playing', Icons.sports_bar),\n                metricCard('Pendientes', '$pending', Icons.payments_outlined),\n                metricCard(\n                  'Generado hoy',\n                  money(todayTotal),\n                  Icons.attach_money,\n                ),"""
           new = """                metricCard(\n                  'Generado hoy',\n                  money(todayTotal),\n                  Icons.attach_money,\n                ),"""
           if old not in source:
@@ -55,9 +54,8 @@ jobs:
           main.write_text(source, encoding='utf-8')
           PY
 
-          dart format lib/main.dart lib/receipt_preview_page.dart test
+          dart format lib test
           flutter pub get
-          dart format --output=none --set-exit-if-changed lib test
           flutter analyze --fatal-warnings --no-fatal-infos
           flutter test
 
@@ -75,7 +73,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm -f scripts/patch_tv_interface_1_2_9.py .github/workflows/finalize-source-129.yml .github/workflows/migrate-source-129.yml .github/workflows/fix-cobrar-print-once.yml 2>/dev/null || true
-          git add pubspec.yaml lib/main.dart lib/receipt_preview_page.dart test .github/workflows/build-apk.yml
+          git add pubspec.yaml lib/main.dart lib/cloud_tv_sync.dart lib/receipt_preview_page.dart test .github/workflows/build-apk.yml
           git add -u
           git commit -m 'Consolida fuente permanente TV e impresora Bluetooth'
           git push origin HEAD:main
