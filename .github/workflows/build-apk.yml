@@ -90,16 +90,18 @@ jobs:
           s = manifest.read_text()
           marker = '<uses-permission android:name="android.permission.INTERNET" />'
           if marker not in s:
-              s = s.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">', '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />')
+              s = s.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">', '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />')
           bt = '''    <uses-permission android:name="android.permission.BLUETOOTH" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />\n    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />'''
           if 'android.permission.BLUETOOTH_CONNECT' not in s:
               s = s.replace(marker, marker + '\n' + bt)
           if 'android:usesCleartextTraffic=' not in s:
               s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
           s = s.replace('android:label="billares_don_miguel"', 'android:label="Billares Don Miguel"')
-          service = '''    <service\n                android:name="de.julianassmann.flutter_background.IsolateHolderService"\n                android:exported="false"\n                android:foregroundServiceType="specialUse" />'''
+          service = '''    <service\n                android:name="de.julianassmann.flutter_background.IsolateHolderService"\n                android:exported="false"\n                android:foregroundServiceType="connectedDevice" />'''
+          s = s.replace('android:name="de.julianassmann.flutter_background.IsolateHolderService"\n                android:exported="false"\n                android:foregroundServiceType="specialUse"', 'android:name="de.julianassmann.flutter_background.IsolateHolderService"\n                android:exported="false"\n                android:foregroundServiceType="connectedDevice"')
           if 'de.julianassmann.flutter_background.IsolateHolderService' not in s:
               s = s.replace('    </application>', service + '\n    </application>')
+          s = s.replace('<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />\n', '')
           manifest.write_text(s)
           PY
 
@@ -118,6 +120,9 @@ jobs:
           grep -q 'ndkVersion = "28.2.13676358"' android/app/build.gradle.kts
           grep -q 'minSdk = 23' android/app/build.gradle.kts
           grep -q 'android.permission.BLUETOOTH_CONNECT' android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE' android/app/src/main/AndroidManifest.xml
+          grep -q 'android:foregroundServiceType="connectedDevice"' android/app/src/main/AndroidManifest.xml
+          ! grep -q 'android:foregroundServiceType="specialUse"' android/app/src/main/AndroidManifest.xml
 
       - name: Instalar dependencias
         run: flutter pub get
@@ -167,6 +172,8 @@ jobs:
           grep -q "package: name='com.billaresdonmiguel.billares_don_miguel'" /tmp/apk-badging.txt
           grep -q "versionCode='129'" /tmp/apk-badging.txt
           grep -q "versionName='1.2.9'" /tmp/apk-badging.txt
+          grep -q "uses-permission: name='android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE'" /tmp/apk-badging.txt
+          grep -q "application-label:'Billares Don Miguel'" /tmp/apk-badging.txt
           apksigner verify --verbose "$APK"
           if zipinfo -1 "$APK" | grep -Eq '^split_config|^config\.'; then
             echo "ERROR: el APK no es universal; contiene configuraciones divididas"
