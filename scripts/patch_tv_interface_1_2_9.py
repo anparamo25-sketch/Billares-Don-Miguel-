@@ -20,8 +20,8 @@ html = TEMPLATE.read_text(encoding='utf-8')
 if 'src="/tv-logo.webp"' not in html:
     raise SystemExit('ERROR: cloud-tv/public/index.html no contiene /tv-logo.webp')
 html64 = base64.b64encode(html.encode('utf-8')).decode('ascii')
-
 source = MAIN.read_text(encoding='utf-8')
+
 getter_pattern = r'String\s+get\s+tvHtml\s*=>.*?;\s*(?=Map\s*<\s*String\s*,\s*dynamic\s*>\s+stateMap)'
 replacement = "String get tvHtml => utf8.decode(base64Decode('" + html64 + "'));\n\n"
 source, count = re.subn(getter_pattern, lambda _: replacement, source, count=1, flags=re.S)
@@ -51,138 +51,167 @@ if "import 'receipt_preview_page.dart';" not in source:
     import_marker = "import 'cloud_tv_sync.dart';"
     if source.count(import_marker) != 1:
         raise SystemExit('ERROR: no se encontró exactamente el import de cloud_tv_sync.dart')
-    source = source.replace(
-        import_marker,
-        import_marker + "\nimport 'receipt_preview_page.dart';",
-        1,
-    )
+    source = source.replace(import_marker, import_marker + "\nimport 'receipt_preview_page.dart';", 1)
 
-printer_methods = '''  Future<bool> configureThermalPrinter() async {
+printer_methods = '''  Future<List<BluetoothInfo>> _pairedThermalPrinters() async {
     final bool enabled = await PrintBluetoothThermal.bluetoothEnabled;
     if (!enabled) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Activa Bluetooth en la tablet para configurar la impresora.')),
-        );
-      }
-      return false;
+      throw StateError('Activa Bluetooth en la tablet para configurar la impresora.');
     }
     final bool permission = await PrintBluetoothThermal.isPermissionBluetoothGranted;
     if (!permission) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Concede el permiso de Bluetooth y vuelve a configurar la impresora.')),
-        );
-      }
-      return false;
+      throw StateError('Concede el permiso de Bluetooth en Android y vuelve a pulsar Impresora térmica.');
     }
+    return PrintBluetoothThermal.pairedBluetooths;
+  }
 
-    final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;
+  Future<bool> configureThermalPrinter() async {
     if (!mounted) return false;
-    if (printers.isEmpty) {
-      await showDialog<void>(
-        context: context,
-        builder: (BuildContext context) => AlertDialog(
-          title: const Text('Impresora térmica'),
-          content: const Text(
-            'No hay impresoras Bluetooth emparejadas con esta tablet. Empareja primero la impresora desde Bluetooth de Android y vuelve aquí.',
-          ),
-          actions: <Widget>[
-            FilledButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cerrar'),
-            ),
-          ],
-        ),
-      );
-      return false;
-    }
-
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? savedMac = prefs.getString('thermal_printer_mac');
-    BluetoothInfo? selected;
-    for (final BluetoothInfo printer in printers) {
-      if (printer.macAdress == savedMac) {
-        selected = printer;
-        break;
-      }
-    }
-
-    final BluetoothInfo? chosen = await showDialog<BluetoothInfo>(
-      context: context,
-      builder: (BuildContext dialogContext) => StatefulBuilder(
-        builder: (BuildContext context, StateSetter setDialogState) {
-          return AlertDialog(
+    try {
+      final List<BluetoothInfo> printers = await _pairedThermalPrinters();
+      if (!mounted) return false;
+      if (printers.isEmpty) {
+        await showDialog<void>(
+          context: context,
+          builder: (BuildContext dialogContext) => AlertDialog(
             title: const Text('Impresora térmica'),
-            content: SizedBox(
-              width: 460,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    selected == null
-                        ? 'Selecciona la impresora Bluetooth que usará la aplicación.'
-                        : 'Configurada: ${selected!.name}',
-                  ),
-                  const SizedBox(height: 12),
-                  ...printers.map(
-                    (BluetoothInfo printer) => RadioListTile<String>(
-                      value: printer.macAdress,
-                      groupValue: selected?.macAdress,
-                      title: Text(printer.name.isEmpty ? 'Impresora Bluetooth' : printer.name),
-                      subtitle: Text(printer.macAdress),
-                      onChanged: (String? value) {
-                        if (value == null) return;
-                        setDialogState(() {
-                          selected = printers.firstWhere(
-                            (BluetoothInfo item) => item.macAdress == value,
-                          );
-                        });
-                      },
-                    ),
-                  ),
-                ],
-              ),
+            content: const Text(
+              'No hay impresoras Bluetooth emparejadas con esta tablet. Empareja primero la impresora desde Bluetooth de Android y vuelve aquí.',
             ),
             actions: <Widget>[
-              TextButton(
+              FilledButton(
                 onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Cancelar'),
-              ),
-              FilledButton.icon(
-                onPressed: selected == null
-                    ? null
-                    : () => Navigator.pop(dialogContext, selected),
-                icon: const Icon(Icons.check),
-                label: const Text('CONFIGURAR IMPRESORA'),
+                child: const Text('Cerrar'),
               ),
             ],
-          );
-        },
-      ),
-    );
+          ),
+        );
+        return false;
+      }
 
-    if (chosen == null) return false;
-    final bool connected = await PrintBluetoothThermal.connect(
-      macPrinterAddress: chosen.macAdress,
-    );
-    if (!connected) {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? savedMac = prefs.getString('thermal_printer_mac');
+      BluetoothInfo? selected;
+      for (final BluetoothInfo printer in printers) {
+        if (printer.macAdress == savedMac) {
+          selected = printer;
+          break;
+        }
+      }
+
+      final BluetoothInfo? chosen = await showDialog<BluetoothInfo>(
+        context: context,
+        builder: (BuildContext dialogContext) => StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            return AlertDialog(
+              title: const Text('Impresora térmica'),
+              content: SizedBox(
+                width: 460,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        selected == null
+                            ? 'Selecciona la impresora Bluetooth que usará la aplicación.'
+                            : 'Configurada: ${selected!.name}',
+                      ),
+                      const SizedBox(height: 12),
+                      ...printers.map(
+                        (BluetoothInfo printer) => RadioListTile<String>(
+                          value: printer.macAdress,
+                          groupValue: selected?.macAdress,
+                          title: Text(
+                            printer.name.isEmpty ? 'Impresora Bluetooth' : printer.name,
+                          ),
+                          subtitle: Text(printer.macAdress),
+                          onChanged: (String? value) {
+                            if (value == null) return;
+                            setDialogState(() {
+                              selected = printers.firstWhere(
+                                (BluetoothInfo item) => item.macAdress == value,
+                              );
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancelar'),
+                ),
+                FilledButton.icon(
+                  onPressed: selected == null
+                      ? null
+                      : () => Navigator.pop(dialogContext, selected),
+                  icon: const Icon(Icons.check),
+                  label: const Text('CONFIGURAR IMPRESORA'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+
+      if (chosen == null) return false;
+      final bool connected = await PrintBluetoothThermal.connect(
+        macPrinterAddress: chosen.macAdress,
+      );
+      if (!connected) {
+        if (mounted) {
+          await showDialog<void>(
+            context: context,
+            builder: (BuildContext dialogContext) => AlertDialog(
+              title: const Text('Impresora térmica'),
+              content: const Text(
+                'La impresora está emparejada, pero la aplicación no pudo conectarse. Verifica que esté encendida y vuelve a intentarlo.',
+              ),
+              actions: <Widget>[
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cerrar'),
+                ),
+              ],
+            ),
+          );
+        }
+        return false;
+      }
+      await prefs.setString('thermal_printer_mac', chosen.macAdress);
+      await prefs.setString('thermal_printer_name', chosen.name);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo conectar con la impresora seleccionada.')),
+          SnackBar(
+            content: Text(
+              'Impresora configurada: ${chosen.name.isEmpty ? 'Bluetooth' : chosen.name}',
+            ),
+          ),
+        );
+      }
+      return true;
+    } catch (error) {
+      if (mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (BuildContext dialogContext) => AlertDialog(
+            title: const Text('Configuración de impresora'),
+            content: Text(error.toString().replaceFirst('Bad state: ', '')),
+            actions: <Widget>[
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cerrar'),
+              ),
+            ],
+          ),
         );
       }
       return false;
     }
-    await prefs.setString('thermal_printer_mac', chosen.macAdress);
-    await prefs.setString('thermal_printer_name', chosen.name);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Impresora configurada: ${chosen.name.isEmpty ? 'Bluetooth' : chosen.name}')),
-      );
-    }
-    return true;
   }
 
 '''
@@ -201,7 +230,6 @@ new_print = '''  Future<String?> printReceipt(BillTable table) async {
       if (!enabled) return 'Activa Bluetooth en la tablet para imprimir.';
       final bool permission = await PrintBluetoothThermal.isPermissionBluetoothGranted;
       if (!permission) return 'Concede el permiso de Bluetooth y vuelve a intentar.';
-
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? savedMac = prefs.getString('thermal_printer_mac');
       if (savedMac == null || savedMac.isEmpty) {
@@ -224,7 +252,6 @@ new_print = '''  Future<String?> printReceipt(BillTable table) async {
       if (!connected) {
         return 'No se pudo conectar con la impresora configurada. Verifica que esté encendida y vuelve a intentar.';
       }
-
       final CapabilityProfile profile = await CapabilityProfile.load();
       final Generator generator = Generator(PaperSize.mm58, profile);
       final List<int> bytes = <int>[];
@@ -283,17 +310,17 @@ source, count = re.subn(
 if count != 1:
     raise SystemExit('ERROR: no se encontró exactamente la implementación de printReceipt')
 
-# La vista previa ya controla que el cobro solo termine después de imprimir correctamente.
 if 'onPrint: () async => printReceipt(table)' not in source:
     raise SystemExit('ERROR: el flujo collect ya no está enlazado a la vista previa de recibo')
 
 printer_button = '''                FilledButton.icon(
-                  onPressed: configureThermalPrinter,
+                  onPressed: () => configureThermalPrinter(),
                   icon: const Icon(Icons.print_outlined),
                   label: const Text('Impresora térmica'),
                 ),
 '''
-if 'label: const Text('"'"'Impresora térmica'"'"')' not in source:
+button_marker = "label: const Text('Impresora térmica')"
+if button_marker not in source:
     anchor = '''                FilledButton.icon(
                   onPressed: showTvConnection,
                   icon: const Icon(Icons.tv),
@@ -303,6 +330,14 @@ if 'label: const Text('"'"'Impresora térmica'"'"')' not in source:
     if anchor not in source:
         raise SystemExit('ERROR: no se encontró el bloque de acciones del panel central')
     source = source.replace(anchor, anchor + printer_button, 1)
+else:
+    source = re.sub(
+        r"FilledButton\.icon\(\s*onPressed:\s*[^,]+,\s*icon:\s*const Icon\(Icons\.print_outlined\),\s*label:\s*const Text\('Impresora térmica'\),\s*\)",
+        printer_button.rstrip(),
+        source,
+        count=1,
+        flags=re.S,
+    )
 
 pub = PUBSPEC.read_text(encoding='utf-8')
 asset_block = '  assets:\n    - assets/tv-logo.webp\n'
@@ -313,12 +348,7 @@ if asset_block not in pub:
     pub = pub.replace(marker_pub, marker_pub + asset_block, 1)
     PUBSPEC.write_text(pub, encoding='utf-8')
 
-source = re.sub(
-    r"const String appVersion = '[^']+';",
-    "const String appVersion = '1.2.9+129';",
-    source,
-    count=1,
-)
+source = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.9+129';", source, count=1)
 MAIN.write_text(source, encoding='utf-8')
 subprocess.run(['dart', 'format', 'lib/main.dart', 'lib/receipt_preview_page.dart'], check=True)
 print('OK: fuente TV 1.2.9+129 y configuración persistente de impresora Bluetooth preparados')
