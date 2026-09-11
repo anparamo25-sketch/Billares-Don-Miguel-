@@ -10,7 +10,7 @@ LOGO = ROOT / 'assets/tv-logo.webp'
 
 html = TEMPLATE.read_text(encoding='utf-8')
 logo64 = base64.b64encode(LOGO.read_bytes()).decode('ascii')
-html = html.replace('src="/tv-logo.webp?v=129"', f'src="data:image/webp;base64,{logo64}"')
+html = html.replace('src="/tv-logo.webp"', f'src="data:image/webp;base64,{logo64}"')
 html64 = base64.b64encode(html.encode('utf-8')).decode('ascii')
 
 source = MAIN.read_text(encoding='utf-8')
