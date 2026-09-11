@@ -36,6 +36,33 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
+      - name: Integrar fuente permanentemente antes de compilar
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -q "Future<bool> configureThermalPrinter() async" lib/main.dart; then
+            echo "INTEGRACION_FUENTE_YA_EXISTE=OK"
+            exit 0
+          fi
+          python3 .github/scripts/integrate_printer.py
+          grep -q "Future<bool> configureThermalPrinter() async" lib/main.dart
+          grep -q "thermal_printer_mac" lib/main.dart
+          grep -q "thermal_printer_name" lib/main.dart
+          grep -q "Impresora térmica" lib/main.dart
+          grep -q "La impresora guardada ya no está emparejada" lib/main.dart
+          grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
+          echo "INTEGRACION_FUENTE_VERIFICADA=OK"
+          dart format lib/main.dart
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/integrate-thermal-printer.yml .github/workflows/thermal-printer-integrate-once.yml .github/scripts/integrate_printer.py .github/integration.trigger || true
+          git add lib/main.dart .github/workflows .github/scripts
+          git commit -m "Integra configuración permanente de impresora térmica"
+          git push origin HEAD:main
+          echo "INTEGRACION_FUENTE_GUARDADA_EN_MAIN=OK"
+          echo "La integración ya quedó permanente. Esta ejecución termina aquí para que la siguiente compilación parta del nuevo commit."
+          exit 0
+
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
         with:
