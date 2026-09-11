@@ -60,15 +60,83 @@ jobs:
           done
           if [ "$installed" -ne 1 ]; then echo "ERROR: No se pudo instalar NDK ${NDK_VERSION} después de 3 intentos."; exit 1; fi
 
-      - name: Generar fuente TV 1.2.9
+      - name: Migrar fuente 1.2.9 a código permanente
+        if: ${{ hashFiles('scripts/patch_tv_interface_1_2_9.py') != '' }}
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/patch_tv_interface_1_2_9.py
+          python3 - <<'PY'
+          from pathlib import Path
+          pubspec = Path('pubspec.yaml')
+          pub = pubspec.read_text(encoding='utf-8').replace(
+              'print_bluetooth_thermal_plus: ^1.0.0',
+              'print_bluetooth_thermal: ^1.2.4',
+          )
+          pubspec.write_text(pub, encoding='utf-8')
+
+          main = Path('lib/main.dart')
+          source = main.read_text(encoding='utf-8').replace(
+              'package:print_bluetooth_thermal_plus/print_bluetooth_thermal.dart',
+              'package:print_bluetooth_thermal/print_bluetooth_thermal.dart',
+          )
+          metrics = '''                metricCard(
+                  'Disponibles',
+                  '$available',
+                  Icons.check_circle_outline,
+                ),
+                metricCard('En juego', '$playing', Icons.sports_bar),
+                metricCard('Pendientes', '$pending', Icons.payments_outlined),
+                metricCard(
+                  'Generado hoy',
+                  money(todayTotal),
+                  Icons.attach_money,
+                ),'''
+          if metrics not in source:
+              raise SystemExit('No se encontró exactamente el bloque de métricas esperado.')
+          source = source.replace(
+              metrics,
+              '''                metricCard(
+                  'Generado hoy',
+                  money(todayTotal),
+                  Icons.attach_money,
+                ),''',
+              1,
+          )
+          main.write_text(source, encoding='utf-8')
+          PY
+          dart format lib/main.dart lib/receipt_preview_page.dart
+          grep -q "print_bluetooth_thermal: ^1.2.4" pubspec.yaml
+          grep -q "package:print_bluetooth_thermal/print_bluetooth_thermal.dart" lib/main.dart
+          grep -q "Future<bool> configureThermalPrinter() async" lib/main.dart
+          grep -q "String get tvHtml =>" lib/main.dart
+
+          python3 - <<'PY'
+          from pathlib import Path
+          workflow = Path('.github/workflows/build-apk.yml')
+          w = workflow.read_text(encoding='utf-8')
+          w = w.replace("          test ! -e scripts/patch_tv_interface_1_2_9.py\n", "")
+          workflow.write_text(w, encoding='utf-8')
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm scripts/patch_tv_interface_1_2_9.py .github/workflows/migrate-source-129.yml .github/workflows/fix-cobrar-print-once.yml
+          git add pubspec.yaml lib/main.dart .github/workflows/build-apk.yml
+          git commit -m "Corrige fuente permanente TV e impresora Bluetooth"
+          git push origin HEAD:main
+
+      - name: Verificar fuente TV y cobro/impresión
+        run: |
+          set -euo pipefail
+          test ! -e scripts/patch_tv_interface_1_2_9.py
           grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
           grep -q "String get tvHtml =>" lib/main.dart
+          grep -q "Future<bool> configureThermalPrinter() async" lib/main.dart
+          grep -q "ReceiptPreviewPage" lib/main.dart
+          grep -q "package:print_bluetooth_thermal/print_bluetooth_thermal.dart" lib/main.dart
+          grep -q "Future<String?> printReceipt(BillTable table)" lib/main.dart
           test -s cloud-tv/public/index.html
-          echo "OK: fuente TV 1.2.9 generada y origen HTML presente"
 
       - name: Instalar dependencias
         run: flutter pub get
@@ -167,7 +235,7 @@ jobs:
           PY
           grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
           grep -q "String get tvHtml =>" lib/main.dart
-          grep -q "print_bluetooth_thermal_plus" lib/main.dart
+          grep -q "package:print_bluetooth_thermal/print_bluetooth_thermal.dart" lib/main.dart
           grep -q "esc_pos_utils_plus" lib/main.dart
           grep -q "Future<String?> printReceipt(BillTable table)" lib/main.dart
           grep -q "ReceiptPreviewPage" lib/main.dart
