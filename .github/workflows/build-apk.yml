@@ -57,33 +57,13 @@ jobs:
             sleep 3
           done
           if [ "$installed" -ne 1 ]; then echo "ERROR: No se pudo instalar NDK ${NDK_VERSION} después de 3 intentos."; exit 1; fi
-      - name: Generar plataforma Android limpia
-        run: flutter create --platforms=android --org com.billaresdonmiguel --project-name billares_don_miguel .
-      - name: Corregir TV, contador y fuente de estado
+      - name: Generar fuente TV 1.2.9
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-          p = Path('lib/main.dart')
-          s = p.read_text()
-          s = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.9+129';", s, count=1)
-          s = s.replace("'start': t.start == null ? null : clock(t.start!),", "'start': t.start == null ? null : t.start!.toIso8601String(),")
-          s = s.replace("'end': t.end == null ? null : clock(t.end!),", "'end': t.end == null ? null : t.end!.toIso8601String(),")
-          old = "function statusName(v){return v==='playing'?'En juego':v==='pending'?'Pendiente de cobro':v==='available'?'Disponible':safe(v)}"
-          new = old + "function elapsedValue(start,end){if(!start)return '00:00:00';var a=new Date(start);var b=end?new Date(end):new Date();if(isNaN(a.getTime())||isNaN(b.getTime()))return '00:00:00';var sec=Math.max(0,Math.floor((b-a)/1000));var h=Math.floor(sec/3600);var m=Math.floor((sec%3600)/60);var ss=sec%60;return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0')}"
-          if old in s and 'function elapsedValue(start,end)' not in s:
-              s = s.replace(old, new, 1)
-          s = s.replace("safe(t.elapsed||'00:00:00')", "elapsedValue(t.start,t.end)")
-          if 'function elapsedValue(start,end)' not in s:
-              raise SystemExit('ERROR: no se pudo instalar el contador de tiempo TV')
-          if "'start': t.start == null ? null : t.start!.toIso8601String()" not in s:
-              raise SystemExit('ERROR: el estado TV no está enviando la hora ISO de inicio')
-          p.write_text(s)
-          PY
+          python3 scripts/patch_tv_interface_1_2_9.py
           grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
-          grep -q "function elapsedValue(start,end)" lib/main.dart
+          grep -q "String get tvHtml =>" lib/main.dart
           grep -q "Tiempo jugado" lib/main.dart
           grep -q "brandLogo" lib/main.dart
           grep -q "billaresdonmiguel.local" lib/main.dart
@@ -137,12 +117,12 @@ jobs:
           grep -q 'FOREGROUND_SERVICE_SPECIAL_USE' android/app/src/main/AndroidManifest.xml
           grep -q 'BLUETOOTH_CONNECT' android/app/src/main/AndroidManifest.xml
           grep -q 'de.julianassmann.flutter_background.IsolateHolderService' android/app/src/main/AndroidManifest.xml
-      - name: Verificar contrato funcional 1.2.7 base
+      - name: Verificar contrato funcional 1.2.9/129
         run: python3 scripts/validate_1_2_7_contract.py
       - name: Verificar cambios TV
         run: |
           grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
-          grep -q "function elapsedValue(start,end)" lib/main.dart
+          grep -q "String get tvHtml =>" lib/main.dart
           grep -q "print_bluetooth_thermal_plus" lib/main.dart
           grep -q "esc_pos_utils_plus" lib/main.dart
           grep -q "Future<void> printReceipt(BillTable table)" lib/main.dart
