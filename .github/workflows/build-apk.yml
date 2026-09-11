@@ -7,6 +7,7 @@ on:
       - update.json
       - .github/workflows/build-apk.yml
       - .github/workflows/consolidate-source-129.yml
+      - .github/workflows/direct-printer-correction.yml
       - .github/workflows/migrate-source-129.yml
       - .github/workflows/finalize-source-129.yml
       - .github/workflows/fix-cobrar-print-once.yml
