@@ -37,9 +37,7 @@ class _ReceiptPreviewPageState extends State<ReceiptPreviewPage> {
       return;
     }
     setState(() => printing = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(error)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
   }
 
   @override

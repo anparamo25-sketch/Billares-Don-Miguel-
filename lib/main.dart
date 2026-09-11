@@ -11,6 +11,7 @@ import 'package:print_bluetooth_thermal_plus/print_bluetooth_thermal.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'cloud_tv_sync.dart';
+import 'receipt_preview_page.dart';
 
 const String appVersion = '1.2.9+129';
 const String defaultPassword = '1234';
@@ -850,92 +851,29 @@ class _DashboardPageState extends State<DashboardPage>
     await saveTables();
   }
 
-  Future<void> printReceipt(BillTable table) async {
-    if (table.start == null || table.end == null) return;
+  Future<String?> printReceipt(BillTable table) async {
+    if (table.start == null || table.end == null) {
+      return 'La partida no tiene datos completos para imprimir.';
+    }
     try {
       final bool enabled = await PrintBluetoothThermal.bluetoothEnabled;
-      if (!enabled) {
-        if (mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Activa Bluetooth en la tablet para imprimir.'),
-            ),
-          );
-        return;
-      }
+      if (!enabled) return 'Activa Bluetooth en la tablet para imprimir.';
       final bool permission =
           await PrintBluetoothThermal.isPermissionBluetoothGranted;
       if (!permission) {
-        if (mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Concede el permiso de Bluetooth y vuelve a intentar.',
-              ),
-            ),
-          );
-        return;
+        return 'Concede el permiso de Bluetooth y vuelve a intentar.';
       }
       final List<BluetoothInfo> printers =
           await PrintBluetoothThermal.pairedBluetooths;
       if (printers.isEmpty) {
-        if (mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'No hay impresoras Bluetooth emparejadas con la tablet.',
-              ),
-            ),
-          );
-        return;
+        return 'No hay impresoras Bluetooth emparejadas con la tablet.';
       }
-      if (!mounted) return;
-      final BluetoothInfo? selected = await showDialog<BluetoothInfo>(
-        context: context,
-        builder:
-            (BuildContext dialogContext) => AlertDialog(
-              title: const Text('Seleccionar impresora térmica'),
-              content: SizedBox(
-                width: 420,
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: printers.length,
-                  itemBuilder: (_, int index) {
-                    final BluetoothInfo printer = printers[index];
-                    return ListTile(
-                      leading: const Icon(Icons.print_outlined),
-                      title: Text(
-                        printer.name.isEmpty
-                            ? 'Impresora Bluetooth'
-                            : printer.name,
-                      ),
-                      subtitle: Text(printer.macAdress),
-                      onTap: () => Navigator.pop(dialogContext, printer),
-                    );
-                  },
-                ),
-              ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cancelar'),
-                ),
-              ],
-            ),
-      );
-      if (selected == null) return;
+      final BluetoothInfo printer = printers.first;
       final bool connected = await PrintBluetoothThermal.connect(
-        macPrinterAddress: selected.macAdress,
+        macPrinterAddress: printer.macAdress,
       );
-      if (!connected) {
-        if (mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No se pudo conectar con la impresora.'),
-            ),
-          );
-        return;
-      }
+      if (!connected) return 'No se pudo conectar con la impresora.';
+
       final CapabilityProfile profile = await CapabilityProfile.load();
       final Generator generator = Generator(PaperSize.mm58, profile);
       final List<int> bytes = <int>[];
@@ -986,30 +924,38 @@ class _DashboardPageState extends State<DashboardPage>
       bytes.addAll(generator.feed(3));
       bytes.addAll(generator.cut());
       final bool printed = await PrintBluetoothThermal.writeBytes(bytes);
-      if (!printed && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('La impresora no aceptó el recibo.')),
-        );
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Recibo enviado a la impresora.')),
-        );
-      }
+      if (!printed) return 'La impresora no aceptó el recibo.';
+      return null;
     } catch (_) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo imprimir el recibo.')),
-        );
+      return 'No se pudo imprimir el recibo.';
     }
   }
 
   Future<void> collect(BillTable table) async {
-    // Cobrar debe funcionar aunque no haya impresora Bluetooth disponible.
-    // La impresión queda como acción independiente en 'Imprimir recibo'.
     if (table.status != TableStatus.pending ||
         table.start == null ||
-        table.end == null)
+        table.end == null ||
+        !mounted) {
       return;
+    }
+    final bool? printed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder:
+            (_) => ReceiptPreviewPage(
+              tableNumber: table.number,
+              startText: clock(table.start!),
+              endText: clock(table.end!),
+              durationText: duration(
+                table.end!.difference(table.start!).inSeconds,
+              ),
+              rateText: '${money(table.rate)} / hora',
+              amountText: money(table.amount),
+              onPrint: () async => printReceipt(table),
+            ),
+      ),
+    );
+    if (printed != true || !mounted) return;
+
     final HistoryEntry entry = HistoryEntry(
       table: table.number,
       start: table.start!,
@@ -1400,17 +1346,6 @@ class _DashboardPageState extends State<DashboardPage>
               ),
             ),
             const SizedBox(height: 8),
-            if (table.status == TableStatus.pending) ...<Widget>[
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () => printReceipt(table),
-                  icon: const Icon(Icons.print_outlined),
-                  label: const Text('Imprimir recibo'),
-                ),
-              ),
-              const SizedBox(height: 7),
-            ],
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
