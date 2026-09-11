@@ -60,6 +60,68 @@ jobs:
           done
           if [ "$installed" -ne 1 ]; then echo "ERROR: No se pudo instalar NDK ${NDK_VERSION} después de 3 intentos."; exit 1; fi
 
+      - name: Reparar archivo real del logo TV WebP
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq webp
+          python3 - <<'PY'
+          from pathlib import Path
+          import struct
+          import shutil
+
+          files = [Path('assets/tv-logo.webp'), Path('cloud-tv/public/tv-logo.webp')]
+
+          def u24le(b):
+              return b[0] | (b[1] << 8) | (b[2] << 16)
+
+          def repair(path: Path):
+              data = bytearray(path.read_bytes())
+              if data[:4] != b'RIFF' or data[8:12] != b'WEBP':
+                  raise SystemExit(f'{path}: no es un contenedor WebP RIFF válido')
+
+              vp8x = data.find(b'VP8X')
+              if vp8x < 0 or vp8x + 18 > len(data):
+                  raise SystemExit(f'{path}: no contiene cabecera VP8X válida')
+
+              old_w = u24le(data[vp8x + 8:vp8x + 11]) + 1
+              old_h = u24le(data[vp8x + 11:vp8x + 14]) + 1
+
+              vp8 = data.find(b'VP8 ')
+              if vp8 < 0 or vp8 + 24 > len(data):
+                  raise SystemExit(f'{path}: no contiene chunk VP8 para recuperar dimensiones reales')
+              payload = vp8 + 8
+              if data[payload + 3:payload + 6] != b'\x9d\x01\x2a':
+                  raise SystemExit(f'{path}: encabezado VP8 interno no reconocido')
+
+              real_w_raw = struct.unpack_from('<H', data, payload + 6)[0]
+              real_h_raw = struct.unpack_from('<H', data, payload + 8)[0]
+              real_w = real_w_raw & 0x3fff
+              real_h = real_h_raw & 0x3fff
+              if real_w <= 0 or real_h <= 0:
+                  raise SystemExit(f'{path}: dimensiones reales VP8 inválidas: {real_w}x{real_h}')
+
+              print(f'{path}: cabecera declarada={old_w}x{old_h}, dimensiones reales VP8={real_w}x{real_h}')
+              if (old_w, old_h) != (real_w, real_h):
+                  data[vp8x + 8:vp8x + 11] = struct.pack('<I', real_w - 1)[:3]
+                  data[vp8x + 11:vp8x + 14] = struct.pack('<I', real_h - 1)[:3]
+                  path.write_bytes(data)
+                  print(f'{path}: cabecera VP8X corregida a {real_w}x{real_h}')
+              else:
+                  print(f'{path}: no requiere modificación de dimensiones')
+
+          repair(files[0])
+          shutil.copy2(files[0], files[1])
+          repair(files[1])
+          PY
+          webpinfo assets/tv-logo.webp
+          webpinfo cloud-tv/public/tv-logo.webp
+          test -s assets/tv-logo.webp
+          test -s cloud-tv/public/tv-logo.webp
+          cmp -s assets/tv-logo.webp cloud-tv/public/tv-logo.webp
+          echo "OK: ambos recursos TV usan el mismo WebP corregido y validado"
+
       - name: Generar fuente TV 1.2.9
         shell: bash
         run: |
@@ -121,14 +183,14 @@ jobs:
           path.write_text(path.read_text().replace('AndroidNotificationImportance.low', 'AndroidNotificationImportance.normal'))
           PY
 
-      - name: Guardar fuente TV corregida en repositorio
+      - name: Guardar fuente TV y logo corregidos en repositorio
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+anparamo25-sketch@users.noreply.github.com"
-          git add lib/main.dart
-          if git diff --cached --quiet; then echo "Fuente TV ya sincronizada."; else git commit -m "fix: sincronizar fuente TV generada [skip ci]"; git push origin HEAD:main; fi
+          git add lib/main.dart assets/tv-logo.webp cloud-tv/public/tv-logo.webp
+          if git diff --cached --quiet; then echo "Fuente TV y logo ya sincronizados."; else git commit -m "fix: corregir logo WebP de TV y sincronizar recurso [skip ci]"; git push origin HEAD:main; fi
 
       - name: Formatear y verificar código
         run: |
@@ -180,6 +242,10 @@ jobs:
           grep -q "print_bluetooth_thermal_plus" lib/main.dart
           grep -q "esc_pos_utils_plus" lib/main.dart
           grep -q "Future<void> printReceipt(BillTable table)" lib/main.dart
+          test -s assets/tv-logo.webp
+          test -s cloud-tv/public/tv-logo.webp
+          cmp -s assets/tv-logo.webp cloud-tv/public/tv-logo.webp
+          webpinfo assets/tv-logo.webp >/dev/null
 
       - name: Compilar APK release
         run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
