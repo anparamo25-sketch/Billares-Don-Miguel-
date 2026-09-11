@@ -52,7 +52,6 @@ jobs:
           grep -q "La impresora guardada ya no está emparejada" lib/main.dart
           grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
           echo "INTEGRACION_FUENTE_VERIFICADA=OK"
-          dart format lib/main.dart
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm -f .github/workflows/integrate-thermal-printer.yml .github/workflows/thermal-printer-integrate-once.yml .github/scripts/integrate_printer.py .github/integration.trigger || true
