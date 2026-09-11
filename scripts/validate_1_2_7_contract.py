@@ -73,7 +73,9 @@ REQUIRED_TV = {
     'tv_elapsed': 'Tiempo jugado:',
     'tv_end': 'Hora finalizada:',
     'tv_amount': 'MONTO A PAGAR',
-    'tv_logo': 'brandLogo',
+    # El logo se sirve desde el archivo publico tv-logo.webp.
+    # No existe una variable brandLogo en esta arquitectura.
+    'tv_logo': 'src="/tv-logo.webp"',
     'tv_timer': 'setInterval(function(){if(lastState)render(lastState)},1000);',
 }
 for name, marker in REQUIRED_TV.items():
