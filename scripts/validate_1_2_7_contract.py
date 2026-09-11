@@ -10,8 +10,6 @@ TV_SOURCE = Path('cloud-tv/public/index.html').read_text()
 APP_NORMALIZED = re.sub(r'\s+', ' ', APP_SOURCE)
 TV_NORMALIZED = re.sub(r'\s+', ' ', TV_SOURCE)
 
-# URL publica vigente de la TV. La fuente HTML usa rutas relativas (/api/*),
-# por lo que el dominio no tiene que estar escrito dentro del HTML.
 PUBLIC_TV_URL = 'https://billaresdonmiguel.pages.dev'
 if PUBLIC_TV_URL != 'https://billaresdonmiguel.pages.dev':
     raise SystemExit('1.2.9 CONTRACT FAILED: dominio publico de TV incorrecto')
@@ -49,7 +47,7 @@ if actual_rates != expected_rates or len(entries) != len(expected_rates):
     raise SystemExit('1.2.9 CONTRACT FAILED: tarifas fijas incorrectas o ausentes')
 
 for port in (80, 8080):
-    pattern = rf'HttpServer\\.bind\\(\\s*InternetAddress\\.anyIPv4\\s*,\\s*{port}\\b'
+    pattern = rf'HttpServer\.bind\(\s*InternetAddress\.anyIPv4\s*,\s*{port}\b'
     if not re.search(pattern, APP_NORMALIZED):
         raise SystemExit(f'1.2.9 CONTRACT FAILED: servidor LAN sin soporte para puerto {port}')
 
@@ -61,9 +59,6 @@ for pattern, name in (
     if len(re.findall(pattern, APP_SOURCE)) != 1:
         raise SystemExit(f'1.2.9 CONTRACT FAILED: {name} debe existir exactamente una vez')
 
-# Contrato de la interfaz TV: se valida contra su fuente HTML real.
-# El dominio publico no se exige dentro del HTML porque el frontend usa
-# location.host y rutas relativas para /api/state y /api/stream.
 REQUIRED_TV = {
     'tv_title': 'Billares Don Miguel',
     'tv_api': '/api/state?ts=',
@@ -73,8 +68,6 @@ REQUIRED_TV = {
     'tv_elapsed': 'Tiempo jugado:',
     'tv_end': 'Hora finalizada:',
     'tv_amount': 'MONTO A PAGAR',
-    # El logo se sirve desde el archivo publico tv-logo.webp.
-    # No existe una variable brandLogo en esta arquitectura.
     'tv_logo': 'src="/tv-logo.webp"',
     'tv_timer': 'setInterval(function(){if(lastState)render(lastState)},1000);',
 }
@@ -82,8 +75,8 @@ for name, marker in REQUIRED_TV.items():
     if marker not in TV_SOURCE and marker not in TV_NORMALIZED:
         raise SystemExit(f'1.2.9 CONTRACT FAILED: falta {name} en la fuente TV: {marker}')
 
-# Solo se validan estilos que forman parte del contrato visual real.
-# text-shadow no es un requisito funcional de esta interfaz y no se exige.
+# Se validan únicamente estilos que forman parte del contrato visual real.
+# text-shadow no es un requisito funcional de la interfaz TV actual.
 for marker in ('color:#1557c0', 'font-size:clamp('):
     if marker not in TV_SOURCE:
         raise SystemExit(f'1.2.9 CONTRACT FAILED: estilo TV ausente: {marker}')
