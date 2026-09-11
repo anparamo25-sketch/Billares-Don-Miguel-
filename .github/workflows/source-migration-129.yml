@@ -11,7 +11,6 @@ permissions:
 
 jobs:
   migrate:
-    if: github.event_name == 'workflow_dispatch' || github.event.head_commit.message != 'refactor: fuente directa 1.2.9 sin parches'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -33,18 +32,12 @@ jobs:
 
           main = Path('lib/main.dart')
           s = main.read_text(encoding='utf-8')
-
-          s = s.replace(
-              "import 'package:print_bluetooth_thermal_plus/print_bluetooth_thermal.dart';",
-              "import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';",
-          )
-
+          s = s.replace("import 'package:print_bluetooth_thermal_plus/print_bluetooth_thermal.dart';", "import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';")
           s = re.sub(r'await PrintBluetoothThermal\.bluetoothEnabled\.timeout\(\s*const Duration\(seconds: 3\),\s*onTimeout: \(\) => false,\s*\)', 'await PrintBluetoothThermal.bluetoothEnabled', s)
           s = re.sub(r'await PrintBluetoothThermal\.isPermissionBluetoothGranted\.timeout\(\s*const Duration\(seconds: 3\),\s*onTimeout: \(\) => false,\s*\)', 'await PrintBluetoothThermal.isPermissionBluetoothGranted', s)
           s = re.sub(r'await PrintBluetoothThermal\.pairedBluetooths\.timeout\(\s*const Duration\(seconds: 5\),\s*onTimeout: \(\) => <BluetoothInfo>\[\],\s*\)', 'await PrintBluetoothThermal.pairedBluetooths', s)
           s = re.sub(r'await PrintBluetoothThermal\.connect\(\s*macPrinterAddress: ([^\n]+),\s*\)\.timeout\(\s*const Duration\(seconds: 8\),\s*onTimeout: \(\) => false,\s*\)', r'await PrintBluetoothThermal.connect(macPrinterAddress: \1)', s)
 
-          # Elimina las tres tarjetas resumen, pero conserva Generado hoy.
           metric_fn = r'      final int available =.*?      Widget metricCard\(String title, String value, IconData icon\) \{.*?\n      \}\n\n      return SingleChildScrollView'
           s, n = re.subn(metric_fn, '      return SingleChildScrollView', s, count=1, flags=re.S)
           if n != 1:
@@ -53,12 +46,10 @@ jobs:
           s, n = re.subn(cards, '', s, count=1)
           if n != 1:
               raise SystemExit('No se pudieron retirar las tres tarjetas resumen')
-
           main.write_text(s, encoding='utf-8')
 
           pub = Path('pubspec.yaml')
-          p = pub.read_text(encoding='utf-8').replace('print_bluetooth_thermal_plus: ^1.0.0', 'print_bluetooth_thermal: ^1.2.4')
-          pub.write_text(p, encoding='utf-8')
+          pub.write_text(pub.read_text(encoding='utf-8').replace('print_bluetooth_thermal_plus: ^1.0.0', 'print_bluetooth_thermal: ^1.2.4'), encoding='utf-8')
 
           build = Path('.github/workflows/build-apk.yml')
           w = build.read_text(encoding='utf-8')
@@ -79,7 +70,7 @@ jobs:
           build.write_text(w, encoding='utf-8')
           PY
 
-      - name: Validar que no quede mecanismo de parcheo
+      - name: Validar fuente final
         run: |
           test ! -e scripts/patch_tv_interface_1_2_9.py
           test ! -e .github/workflows/fix-cobrar-print-once.yml
