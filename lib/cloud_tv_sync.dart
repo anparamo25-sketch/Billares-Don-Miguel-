@@ -12,7 +12,9 @@ String _elapsedFor(Map<String, dynamic> table) {
   final DateTime? start = DateTime.tryParse(startRaw);
   if (start == null) return '00:00:00';
   final String? endRaw = table['end'] as String?;
-  final DateTime finish = endRaw == null || endRaw.isEmpty ? DateTime.now() : (DateTime.tryParse(endRaw) ?? DateTime.now());
+  final DateTime finish = endRaw == null || endRaw.isEmpty
+      ? DateTime.now()
+      : (DateTime.tryParse(endRaw) ?? DateTime.now());
   final int seconds = finish.difference(start).inSeconds.clamp(0, 2147483647);
   final int hours = seconds ~/ 3600;
   final int minutes = (seconds % 3600) ~/ 60;
@@ -26,7 +28,9 @@ bool _cloudTvPublishing = false;
 
 Future<void> publishCloudTvState(List<Map<String, dynamic>> tables) async {
   if (_cloudTvPublishing) return;
-  final List<Map<String, dynamic>> payloadTables = tables.map((Map<String, dynamic> table) {
+  final List<Map<String, dynamic>> payloadTables = tables.map((
+    Map<String, dynamic> table,
+  ) {
     final Map<String, dynamic> copy = Map<String, dynamic>.from(table);
     copy['elapsed'] = _elapsedFor(copy);
     return copy;
@@ -35,16 +39,21 @@ Future<void> publishCloudTvState(List<Map<String, dynamic>> tables) async {
   if (signature == _lastPublishedSignature) return;
   _cloudTvPublishing = true;
   try {
-    final HttpClient client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+    final HttpClient client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 5);
     final Uri uri = Uri.parse('$cloudTvBaseUrl/api/publish');
     final HttpClientRequest request = await client.postUrl(uri);
     request.headers.contentType = ContentType.json;
-    request.write(jsonEncode(<String, dynamic>{
-      'brand': 'Billares Don Miguel',
-      'updatedAt': DateTime.now().toIso8601String(),
-      'tables': payloadTables,
-    }));
-    final HttpClientResponse response = await request.close().timeout(const Duration(seconds: 8));
+    request.write(
+      jsonEncode(<String, dynamic>{
+        'brand': 'Billares Don Miguel',
+        'updatedAt': DateTime.now().toIso8601String(),
+        'tables': payloadTables,
+      }),
+    );
+    final HttpClientResponse response = await request.close().timeout(
+      const Duration(seconds: 8),
+    );
     await response.drain<void>();
     client.close(force: true);
     if (response.statusCode >= 200 && response.statusCode < 300) {

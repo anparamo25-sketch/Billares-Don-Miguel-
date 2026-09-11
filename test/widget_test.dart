@@ -2,7 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:billares_don_miguel/main.dart';
 
 void main() {
-  testWidgets('La aplicación inicia en la pantalla de administrador', (tester) async {
+  testWidgets('La aplicación inicia en la pantalla de administrador', (
+    tester,
+  ) async {
     await tester.pumpWidget(const BillaresApp());
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.byType(LoginPage), findsOneWidget);
@@ -18,10 +20,13 @@ void main() {
   });
 
   test('Los estados funcionales de una mesa existen sin arquitectura de dispositivos por mesa', () {
-    expect(TableStatus.values, containsAll(<TableStatus>[
-      TableStatus.available,
-      TableStatus.playing,
-      TableStatus.pending,
-    ]));
+    expect(
+      TableStatus.values,
+      containsAll(<TableStatus>[
+        TableStatus.available,
+        TableStatus.playing,
+        TableStatus.pending,
+      ]),
+    );
   });
 }
