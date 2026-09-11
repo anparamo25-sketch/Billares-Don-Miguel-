@@ -94,8 +94,10 @@ source = re.sub(r"const String appVersion = '[^']+';", "const String appVersion 
 
 MAIN.write_text(source, encoding='utf-8')
 
+# La validación de dependencias se ejecuta en el workflow después de flutter pub get.
+# Este generador solo debe producir y formatear la fuente, no analizarla antes de
+# que Flutter haya resuelto las dependencias del proyecto.
 subprocess.run(['dart', 'format', 'lib/main.dart'], check=True)
-subprocess.run(['dart', 'analyze', 'lib/main.dart'], check=True)
 
 subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], check=True)
 subprocess.run(['git', 'config', 'user.email', '41898282+anparamo25-sketch@users.noreply.github.com'], check=True)
