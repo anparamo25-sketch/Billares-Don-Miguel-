@@ -68,6 +68,7 @@ REQUIRED_TV = {
     'tv_title': 'Billares Don Miguel',
     'tv_api': '/api/state?ts=',
     'tv_stream': '/api/stream',
+    'tv_routing': 'location.host',
     'tv_start': 'Hora de inicio:',
     'tv_elapsed': 'Tiempo jugado:',
     'tv_end': 'Hora finalizada:',
