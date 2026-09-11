@@ -1,6 +1,5 @@
 from pathlib import Path
 import base64
-import json
 import re
 import subprocess
 
@@ -9,20 +8,25 @@ MAIN = ROOT / 'lib/main.dart'
 TEMPLATE = ROOT / 'cloud-tv/public/index.html'
 LOGO = ROOT / 'assets/tv-logo.webp'
 
+# La TV se incorpora al código Dart como datos Base64. Esto evita que el HTML,
+# JavaScript o CSS puedan ser interpretados como interpolación Dart ($) o como
+# escapes de una cadena Dart. No se modifica la lógica de la TV: se corrige la
+# representación del HTML para que el código generado sea siempre sintácticamente válido.
 html = TEMPLATE.read_text(encoding='utf-8')
 logo64 = base64.b64encode(LOGO.read_bytes()).decode('ascii')
 html = html.replace('src="/tv-logo.webp"', f'src="data:image/webp;base64,{logo64}"')
-html = html.replace('C$', r'C\$')
-dart_html = json.dumps(html, ensure_ascii=False, separators=(',', ':'))
+html64 = base64.b64encode(html.encode('utf-8')).decode('ascii')
+
 source = MAIN.read_text(encoding='utf-8')
 
-# Reemplaza de forma robusta el getter completo, aunque Dart haya insertado
-# saltos de línea o espacios distintos al formato esperado originalmente.
+# Sustituye únicamente la definición del getter por una representación Dart
+# segura. La cadena Base64 usa únicamente caracteres ASCII sin significado
+# especial para el parser de Dart.
 getter_pattern = r'String\s+get\s+tvHtml\s*=>.*?;\s*(?=Map\s*<\s*String\s*,\s*dynamic\s*>\s+stateMap)'
-replacement = 'String get tvHtml => ' + dart_html + ';\n\n'
+replacement = "String get tvHtml => utf8.decode(base64Decode('" + html64 + "'));\n\n"
 source, getter_count = re.subn(getter_pattern, replacement, source, count=1, flags=re.S)
 if getter_count != 1:
-    raise SystemExit('ERROR: no se pudo reemplazar tvHtml en la versión 1.2.9+129')
+    raise SystemExit('ERROR: no se pudo generar tvHtml correctamente para 1.2.9+129')
 
 old_collect = '''  Future<void> collect(BillTable table) async {
     // Cobrar debe funcionar aunque no haya impresora Bluetooth disponible.
@@ -76,7 +80,6 @@ new_collect = '''  Future<void> collect(BillTable table) async {
     await saveHistory();
     await saveTables();
     await saveWorkday();
-    // El cobro queda guardado antes de intentar imprimir.
     await printReceipt(receiptTable);
   }'''
 if old_collect in source:
@@ -87,21 +90,18 @@ new_grid = "mainAxisExtent: width >= 1100 ? 410 : width >= 650 ? 410 : 430"
 if old_grid in source:
     source = source.replace(old_grid, new_grid, 1)
 
-# La fuente final debe seguir identificando explícitamente la versión 1.2.9/129.
 source = re.sub(r"const String appVersion = '[^']+';", "const String appVersion = '1.2.9+129';", source, count=1)
 
 MAIN.write_text(source, encoding='utf-8')
 
-# Validate the modified Dart source before the release build.
 subprocess.run(['dart', 'format', 'lib/main.dart'], check=True)
 subprocess.run(['dart', 'analyze', 'lib/main.dart'], check=True)
 
-# Persist the generated source so the repository matches the APK that was built.
 subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], check=True)
 subprocess.run(['git', 'config', 'user.email', '41898282+anparamo25-sketch@users.noreply.github.com'], check=True)
 subprocess.run(['git', 'add', 'lib/main.dart'], check=True)
 if subprocess.run(['git', 'diff', '--cached', '--quiet']).returncode != 0:
-    subprocess.run(['git', 'commit', '-m', 'feat: actualizar interfaz TV y cobro para 1.2.9+129 [skip ci]'], check=True)
+    subprocess.run(['git', 'commit', '-m', 'fix: generar fuente TV válida para 1.2.9+129 [skip ci]'], check=True)
     subprocess.run(['git', 'push', 'origin', 'HEAD:main'], check=True)
 
-print('OK: interfaz TV, logo, tarjetas, Cobrar e impresión automática preparados para 1.2.9+129')
+print('OK: fuente TV generada con representación segura y válida para 1.2.9+129')
