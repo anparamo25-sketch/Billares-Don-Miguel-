@@ -28,6 +28,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           p = Path('lib/main.dart')
           s = p.read_text(encoding='utf-8')
@@ -35,40 +36,29 @@ jobs:
           if 'Future<bool> configureThermalPrinter() async {' not in s:
               raise SystemExit('ERROR: falta configureThermalPrinter en la fuente')
 
-          old = '''                FilledButton.icon(
-                  onPressed: showTvConnection,
-                  icon: const Icon(Icons.tv),
-                  label: const Text('Mostrar en TV'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: checkForUpdate,
-                  icon: const Icon(Icons.system_update_alt),
-                  label: const Text('Buscar actualización'),
-                ),'''
-
-          new = '''                OutlinedButton.icon(
-                  onPressed: configureThermalPrinter,
-                  icon: const Icon(Icons.print_outlined),
-                  label: const Text('Configurar impresora térmica'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: checkForUpdate,
-                  icon: const Icon(Icons.system_update_alt),
-                  label: const Text('Buscar actualización'),
-                ),'''
-
-          if old not in s:
-              if 'label: const Text(\'Configurar impresora térmica\')' not in s:
-                  raise SystemExit('ERROR: no se encontró el bloque de interfaz que debe corregirse')
-          else:
-              s = s.replace(old, new, 1)
+          # Corregir la interfaz real de la fuente, sin depender de una indentación
+          # o bloque exactos: sustituye únicamente el botón que abre la configuración TV.
+          pattern = re.compile(
+              r"\s*FilledButton\.icon\(\s*"
+              r"onPressed:\s*showTvConnection,\s*"
+              r"icon:\s*const Icon\(Icons\.tv\),\s*"
+              r"label:\s*const Text\('Mostrar en TV'\),\s*"
+              r"\),",
+              re.MULTILINE,
+          )
+          replacement = """\n                OutlinedButton.icon(\n                  onPressed: configureThermalPrinter,\n                  icon: const Icon(Icons.print_outlined),\n                  label: const Text('Configurar impresora térmica'),\n                ),"""
+          s, replaced = pattern.subn(replacement, s, count=1)
+          if replaced != 1:
+              raise SystemExit(f'ERROR: se esperaban 1 botón Mostrar en TV y se encontraron {replaced}')
 
           if 'onPressed: showTvConnection' in s:
               raise SystemExit('ERROR: el botón Mostrar en TV sigue presente en la interfaz')
           if 'Compartir pantalla' in s or 'compartir pantalla' in s:
               raise SystemExit('ERROR: todavía existe una referencia a Compartir pantalla')
-          if 'label: const Text(\'Configurar impresora térmica\')' not in s:
+          if "label: const Text('Configurar impresora térmica')" not in s:
               raise SystemExit('ERROR: no quedó el botón Configurar impresora térmica')
+          if 'thermal_printer_mac' not in s or 'thermal_printer_name' not in s:
+              raise SystemExit('ERROR: se perdió la integración permanente de la impresora')
 
           p.write_text(s, encoding='utf-8')
           PY
@@ -88,7 +78,9 @@ jobs:
           ! grep -qi "Compartir pantalla" lib/main.dart
           grep -q "thermal_printer_mac" lib/main.dart
           grep -q "thermal_printer_name" lib/main.dart
-          echo "Fuente 1.2.9/129 verificada: impresora visible y botón de compartir pantalla eliminado."
+          grep -q "PrintBluetoothThermal.connect" lib/main.dart
+          grep -q "PrintBluetoothThermal.writeBytes" lib/main.dart
+          echo "Fuente 1.2.9/129 verificada: configuración visible, integración Bluetooth intacta y botón TV eliminado."
 
       - name: Guardar corrección directamente en main y retirar workflow
         shell: bash
