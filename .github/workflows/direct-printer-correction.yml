@@ -1,10 +1,6 @@
 name: Correccion directa impresora termica
 
-on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/direct-printer-correction.yml
+on: push
 
 permissions:
   contents: write
@@ -27,21 +23,17 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Integrar configuracion persistente de impresora en la fuente
+      - name: Integrar configuracion persistente de impresora
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import re
-
           path = Path('lib/main.dart')
           source = path.read_text(encoding='utf-8')
-
           start = source.index('  Future<String?> printReceipt(BillTable table) async {')
           end = source.index('  Future<void> collect(BillTable table) async {', start)
-
-          printer_code = r'''  Future<bool> configureThermalPrinter() async {
+          printer_code = '''  Future<bool> configureThermalPrinter() async {
     if (!mounted) return false;
     try {
       final bool enabled = await PrintBluetoothThermal.bluetoothEnabled;
@@ -58,7 +50,6 @@ jobs:
         );
         return false;
       }
-
       final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;
       if (printers.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -66,14 +57,12 @@ jobs:
         );
         return false;
       }
-
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? savedMac = prefs.getString('thermal_printer_mac');
-      BluetoothInfo? selected = printers.cast<BluetoothInfo?>().firstWhere(
-        (BluetoothInfo? printer) => printer?.macAdress == savedMac,
-        orElse: () => null,
-      );
-
+      BluetoothInfo? selected;
+      for (final BluetoothInfo printer in printers) {
+        if (printer.macAdress == savedMac) selected = printer;
+      }
       final BluetoothInfo? result = await showDialog<BluetoothInfo>(
         context: context,
         builder: (BuildContext dialogContext) {
@@ -92,14 +81,12 @@ jobs:
                         groupValue: current?.macAdress,
                         onChanged: (String? value) {
                           if (value == null) return;
-                          final BluetoothInfo chosen = printers.firstWhere(
-                            (BluetoothInfo item) => item.macAdress == value,
-                          );
-                          setDialogState(() => current = chosen);
+                          for (final BluetoothInfo item in printers) {
+                            if (item.macAdress == value) current = item;
+                          }
+                          setDialogState(() {});
                         },
-                        title: Text(
-                          printer.name.isEmpty ? 'Impresora térmica' : printer.name,
-                        ),
+                        title: Text(printer.name.isEmpty ? 'Impresora térmica' : printer.name),
                         subtitle: Text(printer.macAdress),
                       );
                     }).toList(),
@@ -111,9 +98,7 @@ jobs:
                     child: const Text('CANCELAR'),
                   ),
                   FilledButton(
-                    onPressed: current == null
-                        ? null
-                        : () => Navigator.pop(dialogContext, current),
+                    onPressed: current == null ? null : () => Navigator.pop(dialogContext, current),
                     child: const Text('GUARDAR'),
                   ),
                 ],
@@ -122,17 +107,12 @@ jobs:
           );
         },
       );
-
       if (result == null) return false;
       await prefs.setString('thermal_printer_name', result.name);
       await prefs.setString('thermal_printer_mac', result.macAdress);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Impresora guardada: ${result.name.isEmpty ? result.macAdress : result.name}',
-            ),
-          ),
+          SnackBar(content: Text('Impresora guardada: ${result.name.isEmpty ? result.macAdress : result.name}')),
         );
       }
       return true;
@@ -156,75 +136,35 @@ jobs:
     if (savedMac == null || savedMac.isEmpty) {
       return 'Configura primero la impresora térmica en Configuración.';
     }
-
     try {
       final bool enabled = await PrintBluetoothThermal.bluetoothEnabled;
       if (!enabled) return 'Activa Bluetooth en la tablet para imprimir.';
       final bool permission = await PrintBluetoothThermal.isPermissionBluetoothGranted;
       if (!permission) return 'Concede el permiso de Bluetooth y vuelve a intentar.';
-
       final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;
-      final BluetoothInfo? printer = printers.cast<BluetoothInfo?>().firstWhere(
-        (BluetoothInfo? item) => item?.macAdress == savedMac,
-        orElse: () => null,
-      );
-      if (printer == null) {
+      bool paired = false;
+      for (final BluetoothInfo printer in printers) {
+        if (printer.macAdress == savedMac) paired = true;
+      }
+      if (!paired) {
         return 'La impresora ${savedName.isEmpty ? savedMac : savedName} ya no está emparejada. Configura o cambia la impresora.';
       }
-
-      final bool connected = await PrintBluetoothThermal.connect(
-        macPrinterAddress: savedMac,
-      );
+      final bool connected = await PrintBluetoothThermal.connect(macPrinterAddress: savedMac);
       if (!connected) return 'No se pudo conectar con la impresora guardada.';
-
       try {
         final CapabilityProfile profile = await CapabilityProfile.load();
         final Generator generator = Generator(PaperSize.mm58, profile);
         final List<int> bytes = <int>[];
-        bytes.addAll(
-          generator.text(
-            'Billares Don Miguel',
-            styles: const PosStyles(
-              align: PosAlign.center,
-              bold: true,
-              height: PosTextSize.size2,
-              width: PosTextSize.size2,
-            ),
-          ),
-        );
-        bytes.addAll(
-          generator.text(
-            'Mesa ${table.number}',
-            styles: const PosStyles(align: PosAlign.center, bold: true),
-          ),
-        );
+        bytes.addAll(generator.text('Billares Don Miguel', styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2)));
+        bytes.addAll(generator.text('Mesa ${table.number}', styles: const PosStyles(align: PosAlign.center, bold: true)));
         bytes.addAll(generator.hr());
         bytes.addAll(generator.text('Hora de inicio: ${clock(table.start!)}'));
         bytes.addAll(generator.text('Hora finalizada: ${clock(table.end!)}'));
-        bytes.addAll(
-          generator.text(
-            'Tiempo jugado: ${duration(table.end!.difference(table.start!).inSeconds)}',
-          ),
-        );
+        bytes.addAll(generator.text('Tiempo jugado: ${duration(table.end!.difference(table.start!).inSeconds)}'));
         bytes.addAll(generator.text('Tarifa: ${money(table.rate)} / hora'));
         bytes.addAll(generator.hr());
-        bytes.addAll(
-          generator.text(
-            'MONTO A PAGAR',
-            styles: const PosStyles(align: PosAlign.center, bold: true),
-          ),
-        );
-        bytes.addAll(
-          generator.text(
-            money(table.amount),
-            styles: const PosStyles(
-              align: PosAlign.center,
-              bold: true,
-              height: PosTextSize.size2,
-              width: PosTextSize.size2,
-            ),
-          ),
-        );
+        bytes.addAll(generator.text('MONTO A PAGAR', styles: const PosStyles(align: PosAlign.center, bold: true)));
+        bytes.addAll(generator.text(money(table.amount), styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2)));
         bytes.addAll(generator.feed(3));
         bytes.addAll(generator.cut());
         final bool printed = await PrintBluetoothThermal.writeBytes(bytes);
@@ -239,17 +179,14 @@ jobs:
   }
 
 '''
-
           source = source[:start] + printer_code + source[end:]
-
           settings_marker = """              const Text(\n                'Tarifas fijas',\n                style: TextStyle(fontWeight: FontWeight.bold),\n              ),"""
           settings_insert = settings_marker + """\n              const SizedBox(height: 16),\n              OutlinedButton.icon(\n                onPressed: () async {\n                  final bool saved = await configureThermalPrinter();\n                  if (saved && context.mounted) Navigator.pop(context);\n                },\n                icon: const Icon(Icons.print_outlined),\n                label: const Text('Impresora térmica'),\n              ),"""
           if settings_marker not in source:
-              raise SystemExit('No se encontró el bloque de configuración de tarifas.')
+            raise SystemExit('No se encontró el bloque de configuración de tarifas.')
           source = source.replace(settings_marker, settings_insert, 1)
           path.write_text(source, encoding='utf-8')
           PY
-
           dart format lib/main.dart
           flutter pub get
           flutter analyze --fatal-warnings --no-fatal-infos
@@ -259,7 +196,7 @@ jobs:
           grep -q "thermal_printer_name" lib/main.dart
           grep -q "Impresora térmica" lib/main.dart
 
-      - name: Publicar correccion permanente y retirar este workflow
+      - name: Publicar correccion permanente
         shell: bash
         run: |
           set -euo pipefail
@@ -267,9 +204,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add lib/main.dart
           git commit -m "Integra configuracion persistente de impresora termica"
-          git push origin HEAD:main
-          git fetch origin main
-          git reset --hard origin/main
-          git rm -f .github/workflows/direct-printer-correction.yml
-          git commit -m "Retira workflow temporal de correccion de impresora"
           git push origin HEAD:main
