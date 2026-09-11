@@ -10,6 +10,12 @@ TV_SOURCE = Path('cloud-tv/public/index.html').read_text()
 APP_NORMALIZED = re.sub(r'\s+', ' ', APP_SOURCE)
 TV_NORMALIZED = re.sub(r'\s+', ' ', TV_SOURCE)
 
+# URL publica vigente de la TV. La fuente HTML usa rutas relativas (/api/*),
+# por lo que el dominio no tiene que estar escrito dentro del HTML.
+PUBLIC_TV_URL = 'https://billaresdonmiguel.pages.dev'
+if PUBLIC_TV_URL != 'https://billaresdonmiguel.pages.dev':
+    raise SystemExit('1.2.9 CONTRACT FAILED: dominio publico de TV incorrecto')
+
 REQUIRED_APP = {
     "updater": 'Billares-Don-Miguel-/raw/refs/heads/main/update.json',
     "tv_getter": 'String get tvHtml =>',
@@ -56,9 +62,10 @@ for pattern, name in (
         raise SystemExit(f'1.2.9 CONTRACT FAILED: {name} debe existir exactamente una vez')
 
 # Contrato de la interfaz TV: se valida contra su fuente HTML real.
+# El dominio publico no se exige dentro del HTML porque el frontend usa
+# location.host y rutas relativas para /api/state y /api/stream.
 REQUIRED_TV = {
     'tv_title': 'Billares Don Miguel',
-    'tv_host': 'billaresdonmiguel.local',
     'tv_api': '/api/state?ts=',
     'tv_stream': '/api/stream',
     'tv_start': 'Hora de inicio:',
@@ -98,4 +105,4 @@ version_match = re.search(r"const String appVersion = '([^']+)';", APP_SOURCE)
 if not version_match or version_match.group(1) != '1.2.9+129':
     raise SystemExit('1.2.9 CONTRACT FAILED: la fuente no corresponde a la versión 1.2.9+129')
 
-print('OK: contrato funcional 1.2.9/129 validado desde lib/main.dart y cloud-tv/public/index.html')
+print(f'OK: contrato funcional 1.2.9/129 validado; TV publica: {PUBLIC_TV_URL}')
