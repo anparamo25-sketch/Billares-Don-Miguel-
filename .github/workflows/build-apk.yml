@@ -87,7 +87,6 @@ jobs:
           if 'applicationId = "com.billaresdonmiguel.billares_don_miguel"' not in s:
               s = s.replace('defaultConfig {', 'defaultConfig {\n        applicationId = "com.billaresdonmiguel.billares_don_miguel"', 1)
           gradle.write_text(s)
-
           manifest = Path('android/app/src/main/AndroidManifest.xml')
           s = manifest.read_text()
           marker = '<uses-permission android:name="android.permission.INTERNET" />'
