@@ -1,0 +1,106 @@
+name: Consolidar fuente 1.2.9
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/consolidate-source-129.yml
+
+permissions:
+  contents: write
+
+jobs:
+  consolidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Configurar Flutter 3.47.3
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.3
+          channel: stable
+          cache: true
+
+      - name: Consolidar fuente permanente
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          pubspec = Path('pubspec.yaml')
+          pub = pubspec.read_text(encoding='utf-8')
+          pub = pub.replace('flutter: ">=3.29.0"', 'flutter: ">=3.44.0"')
+          pub = pub.replace('print_bluetooth_thermal_plus: ^1.0.0', 'print_bluetooth_thermal: ^1.2.4')
+          pubspec.write_text(pub, encoding='utf-8')
+
+          main = Path('lib/main.dart')
+          source = main.read_text(encoding='utf-8')
+          source = source.replace(
+              'package:print_bluetooth_thermal_plus/print_bluetooth_thermal.dart',
+              'package:print_bluetooth_thermal/print_bluetooth_thermal.dart',
+          )
+
+          pattern = re.compile(
+              r"\s*metricCard\(\s*'Disponibles'.*?"
+              r"metricCard\(\s*'Generado hoy'.*?\),",
+              re.DOTALL,
+          )
+          replacement = """\n                metricCard(\n                  'Generado hoy',\n                  money(todayTotal),\n                  Icons.attach_money,\n                ),"""
+          source, count = pattern.subn(replacement, source, count=1)
+          if count == 0 and any(x in source for x in ["'Disponibles'", "'En juego'", "'Pendientes'"]):
+              raise SystemExit('No se pudo consolidar directamente el bloque de metricas.')
+          main.write_text(source, encoding='utf-8')
+          PY
+
+          dart format lib/main.dart lib/receipt_preview_page.dart test
+          flutter pub get
+          dart format --output=none --set-exit-if-changed lib test
+          flutter analyze --fatal-warnings --no-fatal-infos
+          flutter test
+
+          grep -q 'print_bluetooth_thermal: ^1.2.4' pubspec.yaml
+          grep -q 'flutter: ">=3.44.0"' pubspec.yaml
+          grep -q 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart' lib/main.dart
+          ! grep -q "'Disponibles'" lib/main.dart
+          ! grep -q "'En juego'" lib/main.dart
+          ! grep -q "'Pendientes'" lib/main.dart
+
+      - name: Retirar archivos temporales y consolidar cambios
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f scripts/patch_tv_interface_1_2_9.py .github/workflows/finalize-source-129.yml .github/workflows/migrate-source-129.yml .github/workflows/fix-cobrar-print-once.yml 2>/dev/null || true
+          git add pubspec.yaml lib/main.dart lib/receipt_preview_page.dart test .github/workflows/build-apk.yml
+          git add -u
+          if git diff --cached --quiet; then
+            echo 'No hay cambios pendientes para consolidar.'
+            exit 0
+          fi
+          git commit -m 'Consolida fuente permanente TV e impresora Bluetooth'
+          git push origin HEAD:main
+
+      - name: Retirar este workflow de consolidacion
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout main
+          git reset --hard origin/main
+          if [ -f .github/workflows/consolidate-source-129.yml ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git rm .github/workflows/consolidate-source-129.yml
+            git commit -m 'Retira workflow temporal de consolidacion'
+            git push origin HEAD:main
+          fi
