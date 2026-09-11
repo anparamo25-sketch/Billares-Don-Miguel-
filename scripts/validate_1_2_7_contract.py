@@ -1,10 +1,8 @@
 from pathlib import Path
 import re
-import runpy
 
-# Generar y validar la fuente final de TV correspondiente a la versión actual 1.2.9/129.
-runpy.run_path('scripts/patch_tv_interface_1_2_9.py', run_name='__main__')
-
+# Este validador solo comprueba la fuente que ya fue generada por el paso de
+# construcción. No regenera, modifica ni hace commits durante la validación.
 SOURCE = Path('lib/main.dart').read_text()
 NORMALIZED = re.sub(r'\s+', ' ', SOURCE)
 
