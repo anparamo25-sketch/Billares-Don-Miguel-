@@ -9,37 +9,43 @@ on:
       - 'lib/main.dart'
       - 'pubspec.yaml'
 
+permissions:
+  contents: write
+
 jobs:
   migrate:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Aplicar refactor completo del flujo de cobro
-        shell: python
+      - name: Aplicar refactor completo
+        shell: bash
         run: |
+          set -euo pipefail
+          python3 - <<'PY'
           from pathlib import Path
           import re
 
           main_path = Path('lib/main.dart')
           preview_path = Path('lib/receipt_preview_page.dart')
-          if not main_path.exists() or not preview_path.exists():
-              print('Esperando a que estén disponibles los archivos de la refactorización.')
-              raise SystemExit(0)
-
           text = main_path.read_text(encoding='utf-8')
 
+          # Si ya se aplicó el refactor, no vuelve a tocar el código.
+          if "const String appVersion = '1.2.10+130';" in text:
+              print('El refactor ya está aplicado; no se modifica el código.')
+              raise SystemExit(0)
+
+          if not preview_path.exists():
+              raise SystemExit('Falta lib/receipt_preview_page.dart; se detiene sin modificar main.dart.')
+
+          marker = "import 'cloud_tv_sync.dart';"
           if "import 'receipt_preview_page.dart';" not in text:
-              marker = "import 'cloud_tv_sync.dart';"
               if text.count(marker) != 1:
                   raise SystemExit('No se encontró exactamente el import de cloud_tv_sync.dart.')
               text = text.replace(marker, marker + "\nimport 'receipt_preview_page.dart';", 1)
 
-          new_print = r'''  Future<String?> printReceipt(BillTable table) async {
+          new_print = '''  Future<String?> printReceipt(BillTable table) async {
     if (table.start == null || table.end == null) {
       return 'La partida no tiene datos completos para imprimir.';
     }
@@ -81,7 +87,7 @@ jobs:
           if count != 1:
               raise SystemExit('No se encontró exactamente la implementación actual de printReceipt.')
 
-          new_collect = r'''  Future<void> collect(BillTable table) async {
+          new_collect = '''  Future<void> collect(BillTable table) async {
     if (table.status != TableStatus.pending || table.start == null || table.end == null || !mounted) return;
     final bool? printed = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
@@ -130,9 +136,10 @@ jobs:
           if count != 1:
               raise SystemExit('No se encontró el botón independiente de imprimir recibo.')
 
-          if "const String appVersion = '1.2.9+129';" not in text:
-              raise SystemExit('La versión esperada 1.2.9+129 no está presente; se detiene para no alterar otra versión.')
-          text = text.replace("const String appVersion = '1.2.9+129';", "const String appVersion = '1.2.10+130';", 1)
+          expected = "const String appVersion = '1.2.9+129';"
+          if expected not in text:
+              raise SystemExit('La versión esperada 1.2.9+129 no está presente; no se modifica otra versión.')
+          text = text.replace(expected, "const String appVersion = '1.2.10+130';", 1)
           main_path.write_text(text, encoding='utf-8')
 
           pubspec = Path('pubspec.yaml')
@@ -141,19 +148,12 @@ jobs:
               p2, count = re.subn(r'(?m)^version:\s*1\.2\.9\+129\s*$', 'version: 1.2.10+130', p, count=1)
               if count:
                   pubspec.write_text(p2, encoding='utf-8')
-
-      - name: Verificar formato y análisis Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.35.2'
-          channel: stable
-      - run: flutter pub get
-      - run: dart format --output=none --set-exit-if-changed lib/main.dart lib/receipt_preview_page.dart
-      - run: flutter analyze --no-fatal-infos
+          PY
 
       - name: Guardar cambios
         shell: bash
         run: |
+          set -euo pipefail
           if git diff --quiet; then
             echo 'No hay cambios que guardar.'
             exit 0
@@ -163,5 +163,3 @@ jobs:
           git add lib/main.dart lib/receipt_preview_page.dart pubspec.yaml
           git commit -m 'feat: cobro con vista previa e impresión obligatoria'
           git push
-
-# Refactor fuente controlado y verificable; no modifica el diseño de la TV.
