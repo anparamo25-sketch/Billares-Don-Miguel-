@@ -55,7 +55,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm -f .github/workflows/integrate-thermal-printer.yml .github/workflows/thermal-printer-integrate-once.yml .github/scripts/integrate_printer.py .github/integration.trigger || true
-          git add lib/main.dart .github/workflows .github/scripts
+          git add -A
           git commit -m "Integra configuración permanente de impresora térmica"
           git push origin HEAD:main
           echo "INTEGRACION_FUENTE_GUARDADA_EN_MAIN=OK"
