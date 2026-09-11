@@ -5,7 +5,12 @@ on:
     branches: [main]
     paths-ignore:
       - update.json
+      - .github/workflows/build-apk.yml
       - .github/workflows/consolidate-source-129.yml
+      - .github/workflows/migrate-source-129.yml
+      - .github/workflows/finalize-source-129.yml
+      - .github/workflows/fix-cobrar-print-once.yml
+      - scripts/patch_tv_interface_1_2_9.py
   workflow_dispatch:
 
 permissions:
@@ -47,7 +52,6 @@ jobs:
           rm -rf "$SDK_ROOT/ndk/${NDK_VERSION}" "$SDK_ROOT/.temp" || true
           installed=0
           for attempt in 1 2 3; do
-            echo "Instalacion Android SDK/NDK, intento $attempt/3"
             if sdkmanager "platforms;android-${COMPILE_SDK}" "build-tools;36.0.0" "ndk;${NDK_VERSION}"; then
               if [ -d "$SDK_ROOT/ndk/${NDK_VERSION}" ]; then installed=1; break; fi
             fi
