@@ -1,3 +1,4 @@
+# Corrección TV 1.2.9+129: el logo se sirve como recurso LAN real, no como data URI WebP.
 from pathlib import Path
 import base64
 import re
@@ -12,8 +13,6 @@ PUBSPEC = ROOT / 'pubspec.yaml'
 if not MAIN.is_file() or not TEMPLATE.is_file() or not LOGO.is_file():
     raise SystemExit('ERROR: faltan archivos base de la interfaz TV o el logo real')
 
-# Mantener el logo real sin deformarlo ni convertirlo en un data URI.
-# La TV lo recibirá desde el mismo servidor LAN del CENTRAL como archivo WebP.
 html = TEMPLATE.read_text(encoding='utf-8')
 if 'src="/tv-logo.webp"' not in html:
     raise SystemExit('ERROR: cloud-tv/public/index.html no contiene /tv-logo.webp')
@@ -26,7 +25,6 @@ source, getter_count = re.subn(getter_pattern, replacement, source, count=1, fla
 if getter_count != 1:
     raise SystemExit('ERROR: no se pudo regenerar tvHtml correctamente para 1.2.9+129')
 
-# Servir el archivo físico desde el CENTRAL. Esto evita depender de data:image/webp;base64 en la TV.
 endpoint = '''    if (request.uri.path == '/tv-logo.webp') {
       try {
         final ByteData logo = await rootBundle.load('assets/tv-logo.webp');
@@ -46,7 +44,6 @@ if "request.uri.path == '/tv-logo.webp'" not in source:
         raise SystemExit('ERROR: no se encontró el punto de inserción del endpoint /tv-logo.webp')
     source = source.replace(marker, endpoint + marker, 1)
 
-# Asegurar que Flutter empaquete el logo real dentro del APK.
 pub = PUBSPEC.read_text(encoding='utf-8')
 if '  assets:\n    - assets/tv-logo.webp\n' not in pub:
     marker_pub = '  uses-material-design: true\n'
