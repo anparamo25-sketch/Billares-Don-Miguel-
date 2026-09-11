@@ -82,14 +82,24 @@ jobs:
           if data[:4] != b'RIFF' or data[8:12] != b'WEBP':
               raise SystemExit(f'{source}: no es un contenedor WebP RIFF válido')
 
+          riff_size = struct.unpack_from('<I', data, 4)[0]
+          riff_end = 8 + riff_size
+          if riff_end > len(data):
+              raise SystemExit(f'{source}: el tamaño RIFF declarado excede el archivo real')
+
           vp8 = data.find(b'VP8 ')
           if vp8 < 0 or vp8 + 8 > len(data):
               raise SystemExit(f'{source}: no contiene un chunk VP8')
-          chunk_size = struct.unpack_from('<I', data, vp8 + 4)[0]
+          declared_chunk_size = struct.unpack_from('<I', data, vp8 + 4)[0]
           payload_start = vp8 + 8
-          payload_end = payload_start + chunk_size
-          if payload_end > len(data):
-              raise SystemExit(f'{source}: tamaño de chunk VP8 fuera del archivo')
+
+          # El contenedor original tiene corrupto el tamaño declarado del chunk VP8.
+          # El RIFF sí delimita correctamente el archivo y VP8 es el último chunk,
+          # por lo que el bitstream válido termina exactamente en el final declarado
+          # por RIFF. No se usa el tamaño corrupto del chunk para cortar el bitstream.
+          payload_end = riff_end
+          if payload_end <= payload_start or payload_end > len(data):
+              raise SystemExit(f'{source}: límites inválidos para el bitstream VP8')
           payload = data[payload_start:payload_end]
           if len(payload) < 10 or payload[3:6] != b'\x9d\x01\x2a':
               raise SystemExit(f'{source}: bitstream VP8 interno no reconocido')
@@ -100,21 +110,19 @@ jobs:
           height = raw_h & 0x3fff
           if width <= 0 or height <= 0:
               raise SystemExit(f'{source}: dimensiones VP8 inválidas: {width}x{height}')
-          print(f'VP8 válido encontrado: {width}x{height}')
+          print(f'VP8 recuperado: {width}x{height}; tamaño declarado corrupto={declared_chunk_size}; tamaño real={len(payload)}')
 
-          # Reconstruir desde cero el contenedor RIFF/WEBP usando el bitstream VP8 real.
+          # Reconstruir desde cero un contenedor RIFF/WEBP válido con el bitstream VP8 real.
           chunk = b'VP8 ' + struct.pack('<I', len(payload)) + payload
           if len(payload) & 1:
               chunk += b'\x00'
-          riff_size = 4 + len(chunk)
-          rebuilt.write_bytes(b'RIFF' + struct.pack('<I', riff_size) + b'WEBP' + chunk)
+          riff_size_out = 4 + len(chunk)
+          rebuilt.write_bytes(b'RIFF' + struct.pack('<I', riff_size_out) + b'WEBP' + chunk)
 
-          # Decodificar el bitstream reconstruido para eliminar cualquier corrupción
-          # del contenedor original y conservar únicamente los píxeles del logo.
+          # Decodificar el WebP reconstruido: elimina la corrupción del contenedor original.
           subprocess.run(['dwebp', str(rebuilt), '-o', str(decoded)], check=True)
 
-          # Altura final exacta de 90 px; cwebp calcula el ancho automáticamente
-          # manteniendo la relación de aspecto original, sin deformar el logo.
+          # Altura exacta de 90 px; cwebp calcula el ancho proporcionalmente.
           subprocess.run(['cwebp', '-quiet', '-resize', '0', '90', str(decoded), '-o', str(final)], check=True)
           shutil.copy2(final, source)
           shutil.copy2(final, target)
@@ -133,12 +141,20 @@ jobs:
           data = Path('assets/tv-logo.webp').read_bytes()
           if data[:4] != b'RIFF' or data[8:12] != b'WEBP':
               raise SystemExit('El logo final no tiene contenedor RIFF/WEBP válido')
+          riff_size = struct.unpack_from('<I', data, 4)[0]
+          if 8 + riff_size != len(data):
+              raise SystemExit(f'El tamaño RIFF final no coincide: declarado={riff_size}, archivo={len(data)-8}')
           vp8 = data.find(b'VP8 ')
-          if vp8 < 0:
-              raise SystemExit('El logo final no contiene chunk VP8')
-          payload = vp8 + 8
-          w = struct.unpack_from('<H', data, payload + 6)[0] & 0x3fff
-          h = struct.unpack_from('<H', data, payload + 8)[0] & 0x3fff
+          if vp8 < 0 or vp8 + 8 > len(data):
+              raise SystemExit('El logo final no contiene chunk VP8 válido')
+          chunk_size = struct.unpack_from('<I', data, vp8 + 4)[0]
+          payload_start = vp8 + 8
+          payload_end = payload_start + chunk_size
+          if payload_end > len(data):
+              raise SystemExit('El chunk VP8 final excede el archivo')
+          payload = data[payload_start:payload_end]
+          w = struct.unpack_from('<H', payload, 6)[0] & 0x3fff
+          h = struct.unpack_from('<H', payload, 8)[0] & 0x3fff
           if h != 90:
               raise SystemExit(f'La altura final del logo es {h}px; se requieren exactamente 90px')
           print(f'OK: logo final {w}x{h}, proporción conservada y sin deformación')
