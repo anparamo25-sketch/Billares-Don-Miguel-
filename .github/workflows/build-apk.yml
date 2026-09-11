@@ -10,7 +10,7 @@ on:
       - .github/workflows/direct-printer-correction.yml
       - .github/workflows/migrate-source-129.yml
       - .github/workflows/finalize-source-129.yml
-      - .github/workflows/fix-cobrar-print-once.yml
+      - .github/workflows/fix_cobrar_print_once.yml
       - scripts/patch_tv_interface_1_2_9.py
   workflow_dispatch:
 
@@ -23,7 +23,7 @@ env:
   BUILD_NUMBER: 129
   MIN_SDK: 23
   COMPILE_SDK: 36
-  NDK_VERSION: 27.0.12077973
+  NDK_VERSION: 28.2.13676358
 
 jobs:
   build:
@@ -35,32 +35,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
-
-      - name: Integrar fuente permanentemente antes de compilar
-        shell: bash
-        run: |
-          set -euo pipefail
-          if grep -q "Future<bool> configureThermalPrinter() async" lib/main.dart; then
-            echo "INTEGRACION_FUENTE_YA_EXISTE=OK"
-            exit 0
-          fi
-          python3 .github/scripts/integrate_printer.py
-          grep -q "Future<bool> configureThermalPrinter() async" lib/main.dart
-          grep -q "thermal_printer_mac" lib/main.dart
-          grep -q "thermal_printer_name" lib/main.dart
-          grep -q "Impresora térmica" lib/main.dart
-          grep -q "La impresora guardada ya no está emparejada" lib/main.dart
-          grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
-          echo "INTEGRACION_FUENTE_VERIFICADA=OK"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm -f .github/workflows/integrate-thermal-printer.yml .github/workflows/thermal-printer-integrate-once.yml .github/scripts/integrate_printer.py .github/integration.trigger || true
-          git add -A
-          git commit -m "Integra configuración permanente de impresora térmica"
-          git push origin HEAD:main
-          echo "INTEGRACION_FUENTE_GUARDADA_EN_MAIN=OK"
-          echo "La integración ya quedó permanente. Esta ejecución termina aquí para que la siguiente compilación parta del nuevo commit."
-          exit 0
 
       - name: Configurar Flutter
         uses: subosito/flutter-action@v2
@@ -87,21 +61,6 @@ jobs:
           done
           test "$installed" -eq 1
 
-      - name: Verificar fuente permanente
-        run: |
-          set -euo pipefail
-          grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
-          grep -q "String get tvHtml =>" lib/main.dart
-          grep -q "Future<bool> configureThermalPrinter() async" lib/main.dart
-          grep -q "ReceiptPreviewPage" lib/main.dart
-          grep -q "package:print_bluetooth_thermal/print_bluetooth_thermal.dart" lib/main.dart
-          grep -q "Future<String?> printReceipt(BillTable table)" lib/main.dart
-          test -s cloud-tv/public/index.html
-          ! grep -R "print_bluetooth_thermal_plus" -n lib pubspec.yaml
-
-      - name: Instalar dependencias
-        run: flutter pub get
-
       - name: Inicializar plataforma Android del proyecto
         shell: bash
         run: |
@@ -112,16 +71,23 @@ jobs:
           test -f android/app/build.gradle.kts
           test -f android/app/src/main/AndroidManifest.xml
 
-      - name: Configurar Android para LAN Bluetooth actualizaciones y segundo plano
+      - name: Configurar Android de forma permanente para instalacion, LAN, Bluetooth y segundo plano
+        shell: bash
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           gradle = Path('android/app/build.gradle.kts')
           s = gradle.read_text()
           s = s.replace('compileSdk = flutter.compileSdkVersion', 'compileSdk = 36')
-          s = s.replace('ndkVersion = flutter.ndkVersion', 'ndkVersion = "27.0.12077973"')
+          s = s.replace('ndkVersion = flutter.ndkVersion', 'ndkVersion = "28.2.13676358"')
           s = s.replace('minSdk = flutter.minSdkVersion', 'minSdk = 23')
+          if 'namespace = "com.billaresdonmiguel.billares_don_miguel"' not in s:
+              s = s.replace('android {', 'android {\n    namespace = "com.billaresdonmiguel.billares_don_miguel"', 1)
+          if 'applicationId = "com.billaresdonmiguel.billares_don_miguel"' not in s:
+              s = s.replace('defaultConfig {', 'defaultConfig {\n        applicationId = "com.billaresdonmiguel.billares_don_miguel"', 1)
           gradle.write_text(s)
+
           manifest = Path('android/app/src/main/AndroidManifest.xml')
           s = manifest.read_text()
           marker = '<uses-permission android:name="android.permission.INTERNET" />'
@@ -138,6 +104,25 @@ jobs:
               s = s.replace('    </application>', service + '\n    </application>')
           manifest.write_text(s)
           PY
+
+      - name: Verificar fuente permanente
+        run: |
+          set -euo pipefail
+          grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
+          grep -q "String get tvHtml =>" lib/main.dart
+          grep -q "Future<bool> configureThermalPrinter() async" lib/main.dart
+          grep -q "ReceiptPreviewPage" lib/main.dart
+          grep -q "package:print_bluetooth_thermal/print_bluetooth_thermal.dart" lib/main.dart
+          grep -q "Future<String?> printReceipt(BillTable table)" lib/main.dart
+          test -s cloud-tv/public/index.html
+          ! grep -R "print_bluetooth_thermal_plus" -n lib pubspec.yaml
+          grep -q 'applicationId = "com.billaresdonmiguel.billares_don_miguel"' android/app/build.gradle.kts
+          grep -q 'ndkVersion = "28.2.13676358"' android/app/build.gradle.kts
+          grep -q 'minSdk = 23' android/app/build.gradle.kts
+          grep -q 'android.permission.BLUETOOTH_CONNECT' android/app/src/main/AndroidManifest.xml
+
+      - name: Instalar dependencias
+        run: flutter pub get
 
       - name: Formatear y verificar codigo
         run: |
@@ -172,12 +157,31 @@ jobs:
       - name: Compilar APK release
         run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
 
+      - name: Validar APK instalable y universal
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$APK"
+          export PATH="${ANDROID_HOME}/build-tools/36.0.0:${ANDROID_HOME}/platform-tools:${PATH}"
+          aapt dump badging "$APK" | tee /tmp/apk-badging.txt
+          grep -q "package: name='com.billaresdonmiguel.billares_don_miguel'" /tmp/apk-badging.txt
+          grep -q "versionCode='129'" /tmp/apk-badging.txt
+          grep -q "versionName='1.2.9'" /tmp/apk-badging.txt
+          apksigner verify --verbose "$APK"
+          if zipinfo -1 "$APK" | grep -Eq '^split_config|^config\.'; then
+            echo "ERROR: el APK no es universal; contiene configuraciones divididas"
+            exit 1
+          fi
+          echo "APK_INSTALABLE_Y_UNIVERSAL=OK"
+
       - name: Verificar APK generado
         run: |
-          test -s build/app/outputs/flutter-apk/app-release.apk
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk "dist/Billares-Don-Miguel-v${BUILD_NAME}-build${BUILD_NUMBER}-run${{ github.run_number }}.apk"
-          cp build/app/outputs/flutter-apk/app-release.apk dist/Billares-Don-Miguel-latest.apk
+          cp "$APK" "dist/Billares-Don-Miguel-v${BUILD_NAME}-build${BUILD_NUMBER}-run${{ github.run_number }}.apk"
+          cp "$APK" dist/Billares-Don-Miguel-latest.apk
           sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
 
       - name: Publicar APK como artefacto
