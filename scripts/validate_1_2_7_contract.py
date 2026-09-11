@@ -1,5 +1,9 @@
 from pathlib import Path
 import re
+import runpy
+
+# Aplicar las correcciones finales antes de validar y compilar el APK.
+runpy.run_path('scripts/patch_tv_interface_1_2_9.py', run_name='__main__')
 
 SOURCE = Path('lib/main.dart').read_text()
 NORMALIZED = re.sub(r'\s+', ' ', SOURCE)
@@ -70,7 +74,6 @@ for marker in (
     if marker not in SOURCE:
         raise SystemExit(f'1.2.7 CONTRACT FAILED: estado visual ausente: {marker}')
 
-# La TV 1.2.8 muestra explícitamente "Hora finalizada" en cada tarjeta.
 if 'Hora finalizada:' not in SOURCE:
     raise SystemExit('1.2.7 CONTRACT FAILED: falta hora de finalización')
 if 'panel externo' in SOURCE.lower() or 'vigilancia externa' in SOURCE.lower():
