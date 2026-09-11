@@ -33,7 +33,6 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
           pubspec = Path('pubspec.yaml')
           pub = pubspec.read_text(encoding='utf-8')
@@ -48,15 +47,11 @@ jobs:
               'package:print_bluetooth_thermal/print_bluetooth_thermal.dart',
           )
 
-          pattern = re.compile(
-              r"\s*metricCard\(\s*'Disponibles'.*?"
-              r"metricCard\(\s*'Generado hoy'.*?\),",
-              re.DOTALL,
-          )
-          replacement = """\n                metricCard(\n                  'Generado hoy',\n                  money(todayTotal),\n                  Icons.attach_money,\n                ),"""
-          source, count = pattern.subn(replacement, source, count=1)
-          if count == 0 and any(x in source for x in ["'Disponibles'", "'En juego'", "'Pendientes'"]):
-              raise SystemExit('No se pudo consolidar directamente el bloque de metricas.')
+          old = """                metricCard(\n                  'Disponibles',\n                  '$available',\n                  Icons.check_circle_outline,\n                ),\n                metricCard('En juego', '$playing', Icons.sports_bar),\n                metricCard('Pendientes', '$pending', Icons.payments_outlined),\n                metricCard(\n                  'Generado hoy',\n                  money(todayTotal),\n                  Icons.attach_money,\n                ),"""
+          new = """                metricCard(\n                  'Generado hoy',\n                  money(todayTotal),\n                  Icons.attach_money,\n                ),"""
+          if old not in source:
+              raise SystemExit('No se encontro el bloque exacto de metricas en lib/main.dart.')
+          source = source.replace(old, new, 1)
           main.write_text(source, encoding='utf-8')
           PY
 
@@ -82,25 +77,15 @@ jobs:
           git rm -f scripts/patch_tv_interface_1_2_9.py .github/workflows/finalize-source-129.yml .github/workflows/migrate-source-129.yml .github/workflows/fix-cobrar-print-once.yml 2>/dev/null || true
           git add pubspec.yaml lib/main.dart lib/receipt_preview_page.dart test .github/workflows/build-apk.yml
           git add -u
-          if git diff --cached --quiet; then
-            echo 'No hay cambios pendientes para consolidar.'
-            exit 0
-          fi
           git commit -m 'Consolida fuente permanente TV e impresora Bluetooth'
           git push origin HEAD:main
 
       - name: Retirar este workflow de consolidacion
-        if: success()
         shell: bash
         run: |
           set -euo pipefail
           git fetch origin main
-          git checkout main
           git reset --hard origin/main
-          if [ -f .github/workflows/consolidate-source-129.yml ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git rm .github/workflows/consolidate-source-129.yml
-            git commit -m 'Retira workflow temporal de consolidacion'
-            git push origin HEAD:main
-          fi
+          git rm -f .github/workflows/consolidate-source-129.yml
+          git commit -m 'Retira workflow temporal de consolidacion'
+          git push origin HEAD:main
