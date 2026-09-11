@@ -22,7 +22,7 @@ env:
   BUILD_NUMBER: 129
   MIN_SDK: 23
   COMPILE_SDK: 36
-  NDK_VERSION: 28.2.13676358
+  NDK_VERSION: 27.0.12077973
 
 jobs:
   build:
@@ -79,7 +79,7 @@ jobs:
           gradle = Path('android/app/build.gradle.kts')
           s = gradle.read_text()
           s = s.replace('compileSdk = flutter.compileSdkVersion', 'compileSdk = 36')
-          s = s.replace('ndkVersion = flutter.ndkVersion', 'ndkVersion = "28.2.13676358"')
+          s = s.replace('ndkVersion = flutter.ndkVersion', 'ndkVersion = "27.0.12077973"')
           s = s.replace('minSdk = flutter.minSdkVersion', 'minSdk = 23')
           if 'namespace = "com.billaresdonmiguel.billares_don_miguel"' not in s:
               s = s.replace('android {', 'android {\n    namespace = "com.billaresdonmiguel.billares_don_miguel"', 1)
@@ -97,8 +97,8 @@ jobs:
           if 'android:usesCleartextTraffic=' not in s:
               s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
           s = s.replace('android:label="billares_don_miguel"', 'android:label="Billares Don Miguel"')
-          service = '''    <service\n                android:name="de.julianassmann.flutter_background.IsolateHolderService"\n                android:exported="false"\n                android:foregroundServiceType="connectedDevice" />'''
           s = s.replace('android:name="de.julianassmann.flutter_background.IsolateHolderService"\n                android:exported="false"\n                android:foregroundServiceType="specialUse"', 'android:name="de.julianassmann.flutter_background.IsolateHolderService"\n                android:exported="false"\n                android:foregroundServiceType="connectedDevice"')
+          service = '''    <service\n                android:name="de.julianassmann.flutter_background.IsolateHolderService"\n                android:exported="false"\n                android:foregroundServiceType="connectedDevice" />'''
           if 'de.julianassmann.flutter_background.IsolateHolderService' not in s:
               s = s.replace('    </application>', service + '\n    </application>')
           s = s.replace('<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />\n', '')
@@ -117,7 +117,7 @@ jobs:
           test -s cloud-tv/public/index.html
           ! grep -R "print_bluetooth_thermal_plus" -n lib pubspec.yaml
           grep -q 'applicationId = "com.billaresdonmiguel.billares_don_miguel"' android/app/build.gradle.kts
-          grep -q 'ndkVersion = "28.2.13676358"' android/app/build.gradle.kts
+          grep -q 'ndkVersion = "27.0.12077973"' android/app/build.gradle.kts
           grep -q 'minSdk = 23' android/app/build.gradle.kts
           grep -q 'android.permission.BLUETOOTH_CONNECT' android/app/src/main/AndroidManifest.xml
           grep -q 'android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE' android/app/src/main/AndroidManifest.xml
