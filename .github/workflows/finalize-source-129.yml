@@ -1,7 +1,10 @@
 name: Finalizar fuente 1.2.9
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/finalize-source-129.yml
 
 permissions:
   contents: write
@@ -61,8 +64,6 @@ jobs:
 
           dart format lib/main.dart lib/receipt_preview_page.dart
           flutter pub get
-
-          test ! -e scripts/patch_tv_interface_1_2_9.py
           grep -q "print_bluetooth_thermal: ^1.2.4" pubspec.yaml
           grep -q "package:print_bluetooth_thermal/print_bluetooth_thermal.dart" lib/main.dart
           grep -q "Future<bool> configureThermalPrinter() async" lib/main.dart
