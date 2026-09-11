@@ -13,6 +13,8 @@ PREVIEW = ROOT / 'lib/receipt_preview_page.dart'
 
 if not MAIN.is_file() or not TEMPLATE.is_file() or not LOGO.is_file():
     raise SystemExit('ERROR: faltan archivos base de la interfaz TV o el logo real')
+if not PREVIEW.is_file():
+    raise SystemExit('ERROR: falta lib/receipt_preview_page.dart para el flujo de cobro')
 
 html = TEMPLATE.read_text(encoding='utf-8')
 if 'src="/tv-logo.webp"' not in html:
@@ -22,8 +24,8 @@ html64 = base64.b64encode(html.encode('utf-8')).decode('ascii')
 source = MAIN.read_text(encoding='utf-8')
 getter_pattern = r'String\s+get\s+tvHtml\s*=>.*?;\s*(?=Map\s*<\s*String\s*,\s*dynamic\s*>\s+stateMap)'
 replacement = "String get tvHtml => utf8.decode(base64Decode('" + html64 + "'));\n\n"
-source, getter_count = re.subn(getter_pattern, replacement, source, count=1, flags=re.S)
-if getter_count != 1:
+source, count = re.subn(getter_pattern, lambda _: replacement, source, count=1, flags=re.S)
+if count != 1:
     raise SystemExit('ERROR: no se pudo regenerar tvHtml correctamente para 1.2.9+129')
 
 endpoint = '''    if (request.uri.path == '/tv-logo.webp') {
@@ -45,9 +47,6 @@ if "request.uri.path == '/tv-logo.webp'" not in source:
         raise SystemExit('ERROR: no se encontró el punto de inserción del endpoint /tv-logo.webp')
     source = source.replace(marker, endpoint + marker, 1)
 
-if not PREVIEW.is_file():
-    raise SystemExit('ERROR: falta lib/receipt_preview_page.dart para el flujo de cobro')
-
 if "import 'receipt_preview_page.dart';" not in source:
     import_marker = "import 'cloud_tv_sync.dart';"
     if source.count(import_marker) != 1:
@@ -68,8 +67,7 @@ printer_methods = '''  Future<bool> configureThermalPrinter() async {
       }
       return false;
     }
-    final bool permission =
-        await PrintBluetoothThermal.isPermissionBluetoothGranted;
+    final bool permission = await PrintBluetoothThermal.isPermissionBluetoothGranted;
     if (!permission) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -78,8 +76,8 @@ printer_methods = '''  Future<bool> configureThermalPrinter() async {
       }
       return false;
     }
-    List<BluetoothInfo> printers =
-        await PrintBluetoothThermal.pairedBluetooths;
+
+    final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;
     if (!mounted) return false;
     if (printers.isEmpty) {
       await showDialog<void>(
@@ -101,8 +99,7 @@ printer_methods = '''  Future<bool> configureThermalPrinter() async {
     }
 
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    String? savedMac = prefs.getString('thermal_printer_mac');
-    String? savedName = prefs.getString('thermal_printer_name');
+    final String? savedMac = prefs.getString('thermal_printer_mac');
     BluetoothInfo? selected;
     for (final BluetoothInfo printer in printers) {
       if (printer.macAdress == savedMac) {
@@ -111,7 +108,7 @@ printer_methods = '''  Future<bool> configureThermalPrinter() async {
       }
     }
 
-    final bool? configured = await showDialog<bool>(
+    final BluetoothInfo? chosen = await showDialog<BluetoothInfo>(
       context: context,
       builder: (BuildContext dialogContext) => StatefulBuilder(
         builder: (BuildContext context, StateSetter setDialogState) {
@@ -126,7 +123,7 @@ printer_methods = '''  Future<bool> configureThermalPrinter() async {
                   Text(
                     selected == null
                         ? 'Selecciona la impresora Bluetooth que usará la aplicación.'
-                        : 'Impresora configurada: ${selected!.name}',
+                        : 'Configurada: ${selected!.name}',
                   ),
                   const SizedBox(height: 12),
                   ...printers.map(
@@ -150,42 +147,13 @@ printer_methods = '''  Future<bool> configureThermalPrinter() async {
             ),
             actions: <Widget>[
               TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('Cancelar'),
               ),
               FilledButton.icon(
                 onPressed: selected == null
                     ? null
-                    : () async {
-                        final BluetoothInfo printer = selected!;
-                        final bool connected =
-                            await PrintBluetoothThermal.connect(
-                          macPrinterAddress: printer.macAdress,
-                        );
-                        if (!connected) {
-                          if (dialogContext.mounted) {
-                            ScaffoldMessenger.of(dialogContext).showSnackBar(
-                              const SnackBar(
-                                content: Text('No se pudo conectar con la impresora seleccionada.'),
-                              ),
-                            );
-                          }
-                          return;
-                        }
-                        await prefs.setString(
-                          'thermal_printer_mac',
-                          printer.macAdress,
-                        );
-                        await prefs.setString(
-                          'thermal_printer_name',
-                          printer.name,
-                        );
-                        savedMac = printer.macAdress;
-                        savedName = printer.name;
-                        if (dialogContext.mounted) {
-                          Navigator.pop(dialogContext, true);
-                        }
-                      },
+                    : () => Navigator.pop(dialogContext, selected),
                 icon: const Icon(Icons.check),
                 label: const Text('CONFIGURAR IMPRESORA'),
               ),
@@ -194,17 +162,27 @@ printer_methods = '''  Future<bool> configureThermalPrinter() async {
         },
       ),
     );
-    if (configured == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Impresora configurada: ${savedName?.isEmpty ?? true ? 'Bluetooth' : savedName}',
-          ),
-        ),
-      );
-      return true;
+
+    if (chosen == null) return false;
+    final bool connected = await PrintBluetoothThermal.connect(
+      macPrinterAddress: chosen.macAdress,
+    );
+    if (!connected) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo conectar con la impresora seleccionada.')),
+        );
+      }
+      return false;
     }
-    return false;
+    await prefs.setString('thermal_printer_mac', chosen.macAdress);
+    await prefs.setString('thermal_printer_name', chosen.name);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Impresora configurada: ${chosen.name.isEmpty ? 'Bluetooth' : chosen.name}')),
+      );
+    }
+    return true;
   }
 
 '''
@@ -221,18 +199,15 @@ new_print = '''  Future<String?> printReceipt(BillTable table) async {
     try {
       final bool enabled = await PrintBluetoothThermal.bluetoothEnabled;
       if (!enabled) return 'Activa Bluetooth en la tablet para imprimir.';
-      final bool permission =
-          await PrintBluetoothThermal.isPermissionBluetoothGranted;
-      if (!permission) {
-        return 'Concede el permiso de Bluetooth y vuelve a intentar.';
-      }
+      final bool permission = await PrintBluetoothThermal.isPermissionBluetoothGranted;
+      if (!permission) return 'Concede el permiso de Bluetooth y vuelve a intentar.';
+
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? savedMac = prefs.getString('thermal_printer_mac');
       if (savedMac == null || savedMac.isEmpty) {
         return 'Primero configura la impresora térmica en Configuración.';
       }
-      final List<BluetoothInfo> printers =
-          await PrintBluetoothThermal.pairedBluetooths;
+      final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;
       BluetoothInfo? printer;
       for (final BluetoothInfo item in printers) {
         if (item.macAdress == savedMac) {
@@ -253,50 +228,40 @@ new_print = '''  Future<String?> printReceipt(BillTable table) async {
       final CapabilityProfile profile = await CapabilityProfile.load();
       final Generator generator = Generator(PaperSize.mm58, profile);
       final List<int> bytes = <int>[];
-      bytes.addAll(
-        generator.text(
-          'Billares Don Miguel',
-          styles: const PosStyles(
-            align: PosAlign.center,
-            bold: true,
-            height: PosTextSize.size2,
-            width: PosTextSize.size2,
-          ),
+      bytes.addAll(generator.text(
+        'Billares Don Miguel',
+        styles: const PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          height: PosTextSize.size2,
+          width: PosTextSize.size2,
         ),
-      );
-      bytes.addAll(
-        generator.text(
-          'Mesa ${table.number}',
-          styles: const PosStyles(align: PosAlign.center, bold: true),
-        ),
-      );
+      ));
+      bytes.addAll(generator.text(
+        'Mesa ${table.number}',
+        styles: const PosStyles(align: PosAlign.center, bold: true),
+      ));
       bytes.addAll(generator.hr());
       bytes.addAll(generator.text('Hora de inicio: ${clock(table.start!)}'));
       bytes.addAll(generator.text('Hora finalizada: ${clock(table.end!)}'));
-      bytes.addAll(
-        generator.text(
-          'Tiempo jugado: ${duration(table.end!.difference(table.start!).inSeconds)}',
-        ),
-      );
+      bytes.addAll(generator.text(
+        'Tiempo jugado: ${duration(table.end!.difference(table.start!).inSeconds)}',
+      ));
       bytes.addAll(generator.text('Tarifa: ${money(table.rate)} / hora'));
       bytes.addAll(generator.hr());
-      bytes.addAll(
-        generator.text(
-          'MONTO A PAGAR',
-          styles: const PosStyles(align: PosAlign.center, bold: true),
+      bytes.addAll(generator.text(
+        'MONTO A PAGAR',
+        styles: const PosStyles(align: PosAlign.center, bold: true),
+      ));
+      bytes.addAll(generator.text(
+        money(table.amount),
+        styles: const PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          height: PosTextSize.size2,
+          width: PosTextSize.size2,
         ),
-      );
-      bytes.addAll(
-        generator.text(
-          money(table.amount),
-          styles: const PosStyles(
-            align: PosAlign.center,
-            bold: true,
-            height: PosTextSize.size2,
-            width: PosTextSize.size2,
-          ),
-        ),
-      );
+      ));
       bytes.addAll(generator.feed(3));
       bytes.addAll(generator.cut());
       final bool printed = await PrintBluetoothThermal.writeBytes(bytes);
@@ -308,89 +273,44 @@ new_print = '''  Future<String?> printReceipt(BillTable table) async {
   }
 
 '''
-source, print_count = re.subn(
-    r"  Future<String\?> printReceipt\(BillTable table\) async \{.*?\n  \}\n\n  Future<void> collect",
-    new_print + '  Future<void> collect',
+source, count = re.subn(
+    r'  Future<String\?> printReceipt\(BillTable table\) async \{.*?\n  \}\n\n  Future<void> collect',
+    lambda _: new_print + '  Future<void> collect',
     source,
     count=1,
     flags=re.S,
 )
-if print_count != 1:
+if count != 1:
     raise SystemExit('ERROR: no se encontró exactamente la implementación de printReceipt')
 
-new_collect = '''  Future<void> collect(BillTable table) async {
-    if (table.status != TableStatus.pending ||
-        table.start == null ||
-        table.end == null ||
-        !mounted) {
-      return;
-    }
-    final bool? printed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder:
-            (_) => ReceiptPreviewPage(
-              tableNumber: table.number,
-              startText: clock(table.start!),
-              endText: clock(table.end!),
-              durationText: duration(
-                table.end!.difference(table.start!).inSeconds,
-              ),
-              rateText: '${money(table.rate)} / hora',
-              amountText: money(table.amount),
-              onPrint: () async => printReceipt(table),
-            ),
-      ),
-    );
-    if (printed != true || !mounted) return;
+# La vista previa ya controla que el cobro solo termine después de imprimir correctamente.
+if 'onPrint: () async => printReceipt(table)' not in source:
+    raise SystemExit('ERROR: el flujo collect ya no está enlazado a la vista previa de recibo')
 
-    final HistoryEntry entry = HistoryEntry(
-      table: table.number,
-      start: table.start!,
-      end: table.end!,
-      seconds: table.end!.difference(table.start!).inSeconds,
-      amount: table.amount,
-      workDate: workdayOpenedAt ?? table.end!,
-    );
-    setState(() {
-      history.add(entry);
-      if (workdayActive) {
-        workdayGenerated += table.amount;
-        workdayGames += 1;
-      }
-      table.status = TableStatus.available;
-      table.start = null;
-      table.end = null;
-      table.amount = 0;
-    });
-    await saveHistory();
-    await saveTables();
-    await saveWorkday();
-  }
-
+printer_button = '''                FilledButton.icon(
+                  onPressed: configureThermalPrinter,
+                  icon: const Icon(Icons.print_outlined),
+                  label: const Text('Impresora térmica'),
+                ),
 '''
-source, collect_count = re.subn(
-    r"  Future<void> collect\(BillTable table\) async \{.*?\n  \}\n\n  int buildNumber",
-    new_collect + '  int buildNumber',
-    source,
-    count=1,
-    flags=re.S,
-)
-if collect_count != 1:
-    raise SystemExit('ERROR: no se encontró exactamente collect')
-
-settings_insert = """                  const SizedBox(height: 16),\n                  Builder(\n                    builder: (BuildContext context) {\n                      return FutureBuilder<SharedPreferences>(\n                        future: SharedPreferences.getInstance(),\n                        builder: (BuildContext context, AsyncSnapshot<SharedPreferences> snapshot) {\n                          final String printerName =\n                              snapshot.data?.getString('thermal_printer_name') ?? '';\n                          return ListTile(\n                            contentPadding: EdgeInsets.zero,\n                            leading: const Icon(Icons.print_outlined),\n                            title: const Text('Impresora térmica'),\n                            subtitle: Text(\n                              printerName.isEmpty\n                                  ? 'No configurada'\n                                  : 'Configurada: $printerName',\n                            ),\n                            trailing: FilledButton(\n                              onPressed: configureThermalPrinter,\n                              child: Text(\n                                printerName.isEmpty\n                                    ? 'CONFIGURAR'\n                                    : 'CAMBIAR IMPRESORA',\n                              ),\n                            ),\n                          );\n                        },\n                      );\n                    },\n                  ),\n"""
-anchor = "                  const Text(\n                    'La TV muestra únicamente la pantalla de mesas; el panel administrativo permanece en el celular.',\n                  ),\n"
-if "'Impresora térmica'" not in source:
+if 'label: const Text('"'"'Impresora térmica'"'"')' not in source:
+    anchor = '''                FilledButton.icon(
+                  onPressed: showTvConnection,
+                  icon: const Icon(Icons.tv),
+                  label: const Text('Mostrar en TV'),
+                ),
+'''
     if anchor not in source:
-        raise SystemExit('ERROR: no se encontró el bloque de configuración para insertar impresora')
-    source = source.replace(anchor, anchor + settings_insert, 1)
+        raise SystemExit('ERROR: no se encontró el bloque de acciones del panel central')
+    source = source.replace(anchor, anchor + printer_button, 1)
 
 pub = PUBSPEC.read_text(encoding='utf-8')
-if '  assets:\n    - assets/tv-logo.webp\n' not in pub:
+asset_block = '  assets:\n    - assets/tv-logo.webp\n'
+if asset_block not in pub:
     marker_pub = '  uses-material-design: true\n'
     if marker_pub not in pub:
         raise SystemExit('ERROR: no se encontró la sección flutter de pubspec.yaml')
-    pub = pub.replace(marker_pub, marker_pub + '  assets:\n    - assets/tv-logo.webp\n', 1)
+    pub = pub.replace(marker_pub, marker_pub + asset_block, 1)
     PUBSPEC.write_text(pub, encoding='utf-8')
 
 source = re.sub(
@@ -401,6 +321,4 @@ source = re.sub(
 )
 MAIN.write_text(source, encoding='utf-8')
 subprocess.run(['dart', 'format', 'lib/main.dart', 'lib/receipt_preview_page.dart'], check=True)
-
 print('OK: fuente TV 1.2.9+129 y configuración persistente de impresora Bluetooth preparados')
-"
