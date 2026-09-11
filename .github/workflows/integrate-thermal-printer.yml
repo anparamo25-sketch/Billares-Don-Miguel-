@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - .github/workflows/integrate-thermal-printer.yml
+      - .github/integration.trigger
   workflow_dispatch:
 
 permissions:
@@ -21,7 +22,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
-
       - name: Integrar configuración permanente
         shell: bash
         run: |
@@ -32,48 +32,23 @@ jobs:
           source = path.read_text(encoding='utf-8')
           anchor = '  Future<String?> printReceipt(BillTable table) async {'
           if 'Future<bool> configureThermalPrinter() async' not in source:
-              if anchor not in source:
-                  raise SystemExit('No se encontró printReceipt.')
+              if anchor not in source: raise SystemExit('No se encontró printReceipt.')
               function = '''  Future<bool> configureThermalPrinter() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     if (!mounted) return false;
     try {
       final bool enabled = await PrintBluetoothThermal.bluetoothEnabled;
-      if (!enabled) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Activa Bluetooth en la tablet y vuelve a abrir esta configuración.')));
-        return false;
-      }
+      if (!enabled) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Activa Bluetooth en la tablet y vuelve a abrir esta configuración.'))); return false; }
       final bool permission = await PrintBluetoothThermal.isPermissionBluetoothGranted;
-      if (!permission) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Concede el permiso de Bluetooth y vuelve a abrir esta configuración.')));
-        return false;
-      }
+      if (!permission) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Concede el permiso de Bluetooth y vuelve a abrir esta configuración.'))); return false; }
       final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;
-      if (printers.isEmpty) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No hay impresoras térmicas Bluetooth emparejadas con esta tablet.')));
-        return false;
-      }
+      if (printers.isEmpty) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No hay impresoras térmicas Bluetooth emparejadas con esta tablet.'))); return false; }
       final String? savedMac = prefs.getString('thermal_printer_mac');
       final String? selectedMac = await showDialog<String>(
         context: context,
         builder: (BuildContext dialogContext) => AlertDialog(
           title: const Text('Impresora térmica'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView(
-              shrinkWrap: true,
-              children: printers.map((BluetoothInfo printer) {
-                final bool selected = printer.macAdress == savedMac;
-                return ListTile(
-                  leading: Icon(selected ? Icons.check_circle : Icons.print_outlined),
-                  title: Text(printer.name.isEmpty ? 'Impresora térmica' : printer.name),
-                  subtitle: Text(printer.macAdress),
-                  trailing: selected ? const Icon(Icons.check) : null,
-                  onTap: () => Navigator.pop(dialogContext, printer.macAdress),
-                );
-              }).toList(),
-            ),
-          ),
+          content: SizedBox(width: double.maxFinite, child: ListView(shrinkWrap: true, children: printers.map((BluetoothInfo printer) { final bool selected = printer.macAdress == savedMac; return ListTile(leading: Icon(selected ? Icons.check_circle : Icons.print_outlined), title: Text(printer.name.isEmpty ? 'Impresora térmica' : printer.name), subtitle: Text(printer.macAdress), trailing: selected ? const Icon(Icons.check) : null, onTap: () => Navigator.pop(dialogContext, printer.macAdress)); }).toList())),
           actions: <Widget>[
             if (savedMac != null) TextButton(onPressed: () async { await prefs.remove('thermal_printer_mac'); await prefs.remove('thermal_printer_name'); if (dialogContext.mounted) Navigator.pop(dialogContext, ''); }, child: const Text('Quitar impresora')),
             FilledButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cerrar')),
@@ -87,10 +62,7 @@ jobs:
       await prefs.setString('thermal_printer_name', selected.name);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Impresora guardada: ${selected.name.isEmpty ? selected.macAdress : selected.name}')));
       return true;
-    } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir la configuración de impresora Bluetooth.')));
-      return false;
-    }
+    } catch (_) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No se pudo abrir la configuración de impresora Bluetooth.'))); return false; }
   }
 
 '''
@@ -103,18 +75,14 @@ jobs:
       final String? savedMac = prefs.getString('thermal_printer_mac');
       if (savedMac == null || savedMac.isEmpty) return 'Configura primero la impresora térmica desde Configuración.';
       BluetoothInfo? printer;
-      for (final BluetoothInfo item in printers) {
-        if (item.macAdress == savedMac) { printer = item; break; }
-      }
+      for (final BluetoothInfo item in printers) { if (item.macAdress == savedMac) { printer = item; break; } }
       if (printer == null) return 'La impresora guardada ya no está emparejada. Ve a Configuración → Impresora térmica.';
-      final bool connected = await PrintBluetoothThermal.connect(
-        macPrinterAddress: printer.macAdress,
-      );'''
+      final bool connected = await PrintBluetoothThermal.connect(macPrinterAddress: printer.macAdress);'''
           if old not in source: raise SystemExit('No se encontró selección automática de impresora.')
           source = source.replace(old, new, 1)
           settings_anchor = "              const Text(\n                'Las tarifas no pueden modificarse desde el administrador.',\n              ),"
           if settings_anchor not in source: raise SystemExit('No se encontró configuración de tarifas.')
-          settings_insert = settings_anchor + '''
+          source = source.replace(settings_anchor, settings_anchor + '''
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: () async {
@@ -123,12 +91,10 @@ jobs:
                 },
                 icon: const Icon(Icons.print_outlined),
                 label: const Text('Impresora térmica'),
-              ),'''
-          source = source.replace(settings_anchor, settings_insert, 1)
+              ),''', 1)
           path.write_text(source, encoding='utf-8')
           PY
-
-      - name: Verificar fuente integrada
+      - name: Verificar fuente
         run: |
           set -euo pipefail
           grep -q "Future<bool> configureThermalPrinter() async" lib/main.dart
@@ -137,18 +103,15 @@ jobs:
           grep -q "Impresora térmica" lib/main.dart
           grep -q "La impresora guardada ya no está emparejada" lib/main.dart
           grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
-
-      - name: Formatear fuente
+      - name: Formatear
         run: dart format lib/main.dart
-
-      - name: Guardar fuente permanente y retirar este workflow
+      - name: Guardar integración permanente
         shell: bash
         run: |
           set -euo pipefail
-          rm -f .github/workflows/integrate-thermal-printer.yml
+          rm -f .github/workflows/integrate-thermal-printer.yml .github/integration.trigger
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add lib/main.dart .github/workflows/integrate-thermal-printer.yml
-          git diff --cached --quiet && { echo 'No hubo cambios'; exit 1; }
+          git add lib/main.dart .github/workflows/integrate-thermal-printer.yml .github/integration.trigger
           git commit -m "Integra configuración permanente de impresora térmica"
           git push origin HEAD:main
