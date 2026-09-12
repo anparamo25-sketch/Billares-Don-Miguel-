@@ -7,9 +7,11 @@ name: Billares Don Miguel - Release APK
     paths-ignore:
       - lib/main.dart
       - update.json
-      - .github/workflows/build-apk.yml
-      - .github/workflows/prepare-release.yml
   workflow_dispatch:
+
+concurrency:
+  group: billares-don-miguel-release-main
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -61,17 +63,30 @@ jobs:
           grep -q 'getBondedBluetoothDevices' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
           grep -q 'android.permission.BLUETOOTH_CONNECT' android/app/src/main/AndroidManifest.xml
 
-      - name: Persist source integration
+      - name: Persist source integration safely
         shell: bash
         run: |
           set -euo pipefail
-          if ! git diff --quiet; then
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add lib/main.dart android
-            git commit -m 'fix: permanently integrate thermal printer discovery'
-            git push
+          if git diff --quiet; then
+            exit 0
           fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/main.dart android
+          git commit -m 'fix: permanently integrate thermal printer discovery'
+
+          git fetch origin main
+          git rebase origin/main
+
+          python3 scripts/permanent_printer_integration.py
+          dart format lib/main.dart
+          git add lib/main.dart android
+          if ! git diff --cached --quiet; then
+            git commit -m 'fix: preserve permanent thermal printer integration after sync'
+          fi
+
+          git push origin HEAD:main
 
       - name: Prepare Android SDK and NDK
         shell: bash
