@@ -2,7 +2,8 @@ name: Billares Don Miguel - Build APK
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
     paths-ignore:
       - lib/main.dart
       - update.json
@@ -16,7 +17,6 @@ env:
   FLUTTER_VERSION: 3.47.3
   BUILD_NAME: 1.2.9
   BUILD_NUMBER: 129
-  MIN_SDK: 23
   COMPILE_SDK: 36
   NDK_VERSION: 27.0.12077973
 
@@ -25,20 +25,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - name: Checkout codigo actual
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Configurar Flutter
+      - name: Configure Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
 
-      - name: Corregir permanentemente la deteccion de impresora termica
+      - name: Permanently integrate thermal printer discovery
         shell: bash
         run: |
           set -euo pipefail
@@ -48,15 +48,18 @@ jobs:
           s = p.read_text()
           helper = '''  Future<List<BluetoothInfo>> loadThermalPrinters() async {
             try {
-              final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;
+              final List<BluetoothInfo> printers =
+                  await PrintBluetoothThermal.pairedBluetooths;
               if (printers.isNotEmpty) return printers;
             } catch (_) {}
             try {
               final List<dynamic> native =
-                  await const MethodChannel('billaresdonmiguel/network').invokeMethod<List<dynamic>>('getBondedBluetoothDevices') ??
-                  <dynamic>[];
+                  await const MethodChannel('billaresdonmiguel/network')
+                          .invokeMethod<List<dynamic>>('getBondedBluetoothDevices') ??
+                      <dynamic>[];
               return native.map((dynamic item) {
-                final Map<dynamic, dynamic> data = Map<dynamic, dynamic>.from(item as Map);
+                final Map<dynamic, dynamic> data =
+                    Map<dynamic, dynamic>.from(item as Map);
                 return BluetoothInfo(
                   name: (data['name'] as String?) ?? '',
                   macAdress: (data['macAdress'] as String?) ?? '',
@@ -71,21 +74,23 @@ jobs:
           marker = '  Future<bool> configureThermalPrinter() async {'
           if 'Future<List<BluetoothInfo>> loadThermalPrinters() async {' not in s:
               if marker not in s:
-                  raise SystemExit('ERROR: no se encontro configureThermalPrinter().')
+                  raise SystemExit('ERROR: configureThermalPrinter no existe.')
               s = s.replace(marker, helper + marker, 1)
-          direct = 'final List<BluetoothInfo> printers =\n          await PrintBluetoothThermal.pairedBluetooths;'
-          s = s.replace(direct, 'final List<BluetoothInfo> printers = await loadThermalPrinters();')
-          if 'Future<List<BluetoothInfo>> loadThermalPrinters() async {' not in s:
-              raise SystemExit('ERROR: no se pudo instalar loadThermalPrinters().')
+          s = s.replace(
+              'final List<BluetoothInfo> printers =\n          await PrintBluetoothThermal.pairedBluetooths;',
+              'final List<BluetoothInfo> printers = await loadThermalPrinters();')
+          s = s.replace(
+              'final List<BluetoothInfo> printers =\n          await loadThermalPrinters();',
+              'final List<BluetoothInfo> printers = await loadThermalPrinters();')
           start = s.find('Future<bool> configureThermalPrinter() async {')
           end = s.find('Future<String?> printReceipt', start)
           if start < 0 or end < 0:
-              raise SystemExit('ERROR: no se pudo validar el bloque de impresora.')
+              raise SystemExit('ERROR: no se pudo validar la funcion de impresora.')
           block = s[start:end]
           if 'PrintBluetoothThermal.bluetoothEnabled' in block:
-              raise SystemExit('ERROR: permanece el bloqueo bluetoothEnabled.')
+              raise SystemExit('ERROR: bluetoothEnabled sigue bloqueando la configuracion.')
           if 'loadThermalPrinters()' not in block:
-              raise SystemExit('ERROR: configureThermalPrinter no usa deteccion robusta.')
+              raise SystemExit('ERROR: la configuracion no usa deteccion robusta.')
           p.write_text(s)
           PY
           dart format lib/main.dart
@@ -98,7 +103,7 @@ jobs:
             git push
           fi
 
-      - name: Inicializar plataforma Android
+      - name: Initialize Android platform
         shell: bash
         run: |
           set -euo pipefail
@@ -108,7 +113,7 @@ jobs:
           test -f android/app/build.gradle.kts
           test -f android/app/src/main/AndroidManifest.xml
 
-      - name: Configurar Android para LAN Bluetooth y segundo plano
+      - name: Configure Android permissions and native Bluetooth bridge
         shell: bash
         run: |
           set -euo pipefail
@@ -124,21 +129,32 @@ jobs:
           if 'applicationId = "com.billaresdonmiguel.billares_don_miguel"' not in s:
               s = s.replace('defaultConfig {', 'defaultConfig {\n        applicationId = "com.billaresdonmiguel.billares_don_miguel"', 1)
           gradle.write_text(s)
+
           manifest = Path('android/app/src/main/AndroidManifest.xml')
           s = manifest.read_text()
           marker = '<uses-permission android:name="android.permission.INTERNET" />'
           if marker not in s:
-              s = s.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">', '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />')
-          bt = '''    <uses-permission android:name="android.permission.BLUETOOTH" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />\n    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />'''
+              s = s.replace(
+                  '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
+                  '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'
+                  '    <uses-permission android:name="android.permission.INTERNET" />\n'
+                  '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n'
+                  '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n'
+                  '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />',
+              )
+          bt = '''    <uses-permission android:name="android.permission.BLUETOOTH" />
+              <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+              <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+              <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />'''
           if 'android.permission.BLUETOOTH_CONNECT' not in s:
               s = s.replace(marker, marker + '\n' + bt)
           if 'android:usesCleartextTraffic=' not in s:
               s = s.replace('<application', '<application android:usesCleartextTraffic="true"', 1)
-          s = s.replace('android:label="billares_don_miguel"', 'android:label="Billares Don Miguel"')
           s = s.replace('android:foregroundServiceType="specialUse"', 'android:foregroundServiceType="connectedDevice"')
           s = s.replace('<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />\n', '')
           manifest.write_text(s)
           PY
+
           mkdir -p android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel
           cat > android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt <<'KOTLIN'
           package com.billaresdonmiguel.billares_don_miguel
@@ -227,16 +243,7 @@ jobs:
           }
           KOTLIN
 
-      - name: Preparar SDK y NDK
-        shell: bash
-        run: |
-          set -euo pipefail
-          export PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/cmdline-tools/bin:${ANDROID_HOME}/platform-tools:${PATH}"
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-${COMPILE_SDK}" "build-tools;36.0.0" "ndk;${NDK_VERSION}"
-          test -d "${ANDROID_HOME}/ndk/${NDK_VERSION}"
-
-      - name: Verificar fuente permanente
+      - name: Verify permanent integration
         shell: bash
         run: |
           set -euo pipefail
@@ -249,34 +256,36 @@ jobs:
           grep -q 'android.permission.BLUETOOTH_CONNECT' android/app/src/main/AndroidManifest.xml
           grep -q 'android:foregroundServiceType="connectedDevice"' android/app/src/main/AndroidManifest.xml
 
-      - name: Instalar dependencias
+      - name: Install dependencies
         run: flutter pub get
 
-      - name: Formatear y analizar
+      - name: Format and analyze
         run: |
           dart format lib test
           dart format --output=none --set-exit-if-changed lib test
           flutter analyze --fatal-warnings --no-fatal-infos
 
-      - name: Ejecutar pruebas
+      - name: Run tests
         run: flutter test
 
-      - name: Compilar APK release
+      - name: Build release APK
         run: flutter build apk --release --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
 
-      - name: Validar APK
+      - name: Validate APK
         shell: bash
         run: |
           set -euo pipefail
           APK="build/app/outputs/flutter-apk/app-release.apk"
           test -s "$APK"
           file "$APK"
-          sha256sum "$APK"
+          sha256sum "$APK" | tee SHA256SUM.txt
 
-      - name: Publicar APK
+      - name: Publish APK
         uses: actions/upload-artifact@v4
         with:
           name: Billares-Don-Miguel-APK-v1.2.9-build129
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            SHA256SUM.txt
           if-no-files-found: error
           retention-days: 30
