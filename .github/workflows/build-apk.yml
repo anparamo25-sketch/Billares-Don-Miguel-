@@ -105,6 +105,105 @@ jobs:
           manifest.write_text(s)
           PY
 
+          mkdir -p android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel
+          cat > android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt <<'KOTLIN'
+          package com.billaresdonmiguel.billares_don_miguel
+
+          import android.Manifest
+          import android.bluetooth.BluetoothManager
+          import android.content.pm.PackageManager
+          import android.net.wifi.WifiManager
+          import android.os.Build
+          import androidx.annotation.NonNull
+          import io.flutter.embedding.android.FlutterActivity
+          import io.flutter.embedding.engine.FlutterEngine
+          import io.flutter.plugin.common.MethodChannel
+
+          class MainActivity : FlutterActivity() {
+            private val channelName = "billaresdonmiguel/network"
+            private val bluetoothPermissionRequestCode = 4901
+            private var pendingBluetoothResult: MethodChannel.Result? = null
+            private var multicastLock: WifiManager.MulticastLock? = null
+
+            override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
+              super.configureFlutterEngine(flutterEngine)
+              MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
+                when (call.method) {
+                  "acquireMulticastLock" -> {
+                    try {
+                      val wifi = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
+                      if (multicastLock == null) {
+                        multicastLock = wifi.createMulticastLock("BillaresDonMiguel")
+                        multicastLock?.setReferenceCounted(false)
+                      }
+                      if (multicastLock?.isHeld != true) multicastLock?.acquire()
+                    } catch (_: Exception) {}
+                    result.success(null)
+                  }
+                  "getBondedBluetoothDevices" -> getBondedBluetoothDevices(result)
+                  else -> result.notImplemented()
+                }
+              }
+            }
+
+            private fun getBondedBluetoothDevices(result: MethodChannel.Result) {
+              try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                  pendingBluetoothResult = result
+                  requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_CONNECT), bluetoothPermissionRequestCode)
+                  return
+                }
+                result.success(readBondedBluetoothDevices())
+              } catch (e: SecurityException) {
+                result.error("BLUETOOTH_PERMISSION", "No se obtuvo permiso para leer dispositivos Bluetooth emparejados.", null)
+              } catch (e: Exception) {
+                result.error("BLUETOOTH_READ", e.message, null)
+              }
+            }
+
+            private fun readBondedBluetoothDevices(): List<Map<String, String>> {
+              val manager = getSystemService(BluetoothManager::class.java)
+              val adapter = manager?.adapter ?: return emptyList()
+              if (!adapter.isEnabled) return emptyList()
+              return adapter.bondedDevices.mapNotNull { device ->
+                try {
+                  mapOf(
+                    "name" to (device.name ?: ""),
+                    "macAdress" to device.address,
+                  )
+                } catch (_: SecurityException) {
+                  null
+                }
+              }
+            }
+
+            override fun onRequestPermissionsResult(
+              requestCode: Int,
+              permissions: Array<out String>,
+              grantResults: IntArray,
+            ) {
+              super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+              if (requestCode != bluetoothPermissionRequestCode) return
+              val result = pendingBluetoothResult ?: return
+              pendingBluetoothResult = null
+              if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                result.success(readBondedBluetoothDevices())
+              } else {
+                result.error("BLUETOOTH_PERMISSION", "Permiso Bluetooth no concedido.", null)
+              }
+            }
+
+            override fun onDestroy() {
+              try {
+                multicastLock?.let { if (it.isHeld) it.release() }
+              } catch (_: Exception) {}
+              multicastLock = null
+              super.onDestroy()
+            }
+          }
+          KOTLIN
+
       - name: Corregir permanentemente la configuracion de impresora termica
         shell: bash
         run: |
@@ -121,14 +220,22 @@ jobs:
           if end < 0:
               raise SystemExit('ERROR: no se encontro printReceipt().')
           block = s[start:end]
-          pattern = re.compile(r"\n\s*if \(!await PrintBluetoothThermal\.bluetoothEnabled\) \{.*?\n\s*\}\n\s*final List<BluetoothInfo> printers =\n\s*await PrintBluetoothThermal\.pairedBluetooths;", re.S)
-          corrected = pattern.sub("\n      final List<BluetoothInfo> printers =\n          await PrintBluetoothThermal.pairedBluetooths;", block, count=1)
-          if corrected != block:
-              s = s[:start] + corrected + s[end:]
-              p.write_text(s)
-              dart_format = True
-          else:
-              dart_format = False
+          block = re.sub(
+              r'\n\s*if \(!await PrintBluetoothThermal\.bluetoothEnabled\) \{.*?\n\s*\}\n\s*final List<BluetoothInfo> printers =\n\s*await PrintBluetoothThermal\.pairedBluetooths;',
+              '\n    final List<BluetoothInfo> printers = await loadThermalPrinters();',
+              block,
+              count=1,
+              flags=re.S,
+          )
+          if 'loadThermalPrinters' not in block:
+              raise SystemExit('ERROR: no se pudo sustituir la deteccion de impresora.')
+          s = s[:start] + block + s[end:]
+          if 'Future<List<BluetoothInfo>> loadThermalPrinters() async {' not in s:
+              helper = '''\n  Future<List<BluetoothInfo>> loadThermalPrinters() async {\n    try {\n      final List<BluetoothInfo> printers = await PrintBluetoothThermal.pairedBluetooths;\n      if (printers.isNotEmpty) return printers;\n    } catch (_) {}\n    try {\n      final List<dynamic> native =\n          await const MethodChannel('billaresdonmiguel/network').invokeMethod<List<dynamic>>('getBondedBluetoothDevices') ??\n          <dynamic>[];\n      return native.map((dynamic item) {\n        final Map<dynamic, dynamic> data = Map<dynamic, dynamic>.from(item as Map);\n        return BluetoothInfo(\n          name: (data['name'] as String?) ?? '',\n          macAdress: (data['macAdress'] as String?) ?? '',\n        );\n      }).where((BluetoothInfo item) => item.macAdress.isNotEmpty).toList();\n    } catch (_) {\n      return <BluetoothInfo>[];\n    }\n  }\n\n'''
+              marker = '  Future<bool> configureThermalPrinter() async {'
+              s = s.replace(marker, helper + marker, 1)
+          s = s.replace('await PrintBluetoothThermal.pairedBluetooths;', 'await loadThermalPrinters();')
+          p.write_text(s)
           PY
           dart format lib/main.dart
           python3 - <<'PY'
@@ -139,15 +246,17 @@ jobs:
           end = s.index('Future<String?> printReceipt', start)
           block = s[start:end]
           assert 'PrintBluetoothThermal.bluetoothEnabled' not in block, 'ERROR: sigue el bloqueo Bluetooth incorrecto'
-          assert 'PrintBluetoothThermal.pairedBluetooths' in block, 'ERROR: falta pairedBluetooths'
-          print('THERMAL_PRINTER_SOURCE_FIX=OK')
+          assert 'loadThermalPrinters()' in block, 'ERROR: configureThermalPrinter no usa la deteccion robusta'
+          assert 'getBondedBluetoothDevices' in s, 'ERROR: falta fallback nativo Bluetooth'
+          assert 'PrintBluetoothThermal.pairedBluetooths' in s, 'ERROR: falta consulta principal pairedBluetooths'
+          print('THERMAL_PRINTER_ROBUST_DISCOVERY=OK')
           PY
           git diff --check
           if ! git diff --quiet -- lib/main.dart; then
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git add lib/main.dart
-            git commit -m 'fix: permanently correct thermal printer configuration'
+            git commit -m 'fix: robustly detect paired thermal printers'
             git push
           fi
 
@@ -160,6 +269,7 @@ jobs:
           grep -q "ReceiptPreviewPage" lib/main.dart
           grep -q "package:print_bluetooth_thermal/print_bluetooth_thermal.dart" lib/main.dart
           grep -q "Future<String?> printReceipt(BillTable table)" lib/main.dart
+          grep -q "getBondedBluetoothDevices" lib/main.dart
           test -s cloud-tv/public/index.html
           ! grep -R "print_bluetooth_thermal_plus" -n lib pubspec.yaml
           grep -q 'applicationId = "com.billaresdonmiguel.billares_don_miguel"' android/app/build.gradle.kts
@@ -169,7 +279,7 @@ jobs:
           grep -q 'android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE' android/app/src/main/AndroidManifest.xml
           grep -q 'android:foregroundServiceType="connectedDevice"' android/app/src/main/AndroidManifest.xml
           ! grep -q 'android:foregroundServiceType="specialUse"' android/app/src/main/AndroidManifest.xml
-          ! grep -A80 'Future<bool> configureThermalPrinter() async {' lib/main.dart | grep -q 'PrintBluetoothThermal.bluetoothEnabled'
+          ! grep -A100 'Future<bool> configureThermalPrinter() async {' lib/main.dart | grep -q 'PrintBluetoothThermal.bluetoothEnabled'
 
       - name: Instalar dependencias
         run: flutter pub get
@@ -204,6 +314,7 @@ jobs:
           grep -q "esc_pos_utils_plus" lib/main.dart
           grep -q "Future<String?> printReceipt(BillTable table)" lib/main.dart
           grep -q "ReceiptPreviewPage" lib/main.dart
+          grep -q "getBondedBluetoothDevices" lib/main.dart
 
       - name: Compilar APK release
         run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
