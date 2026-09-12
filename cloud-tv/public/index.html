@@ -17,8 +17,8 @@ header{height:68px;flex:0 0 68px;padding:4px 7px;background:#fff;border-bottom:3
 .green{background:#103b22;border-color:#22c55e}.red{background:#511b1b;border-color:#ef4444}.yellow{background:#56490a;border-color:#eab308}
 .num{font-size:calc(30px * var(--scale));font-weight:900;line-height:1.05;white-space:nowrap}.status{font-size:calc(20px * var(--scale));font-weight:900;margin:calc(8px * var(--scale)) 0 calc(7px * var(--scale));line-height:1.05;white-space:nowrap}.green .status{color:#4ade80}.red .status{color:#f87171}.yellow .status{color:#fde047}
 .rate{font-size:calc(18px * var(--scale));font-weight:900;line-height:1.05;margin:0 0 calc(10px * var(--scale));white-space:nowrap}.line{font-size:calc(17px * var(--scale));font-weight:700;line-height:1.12;margin:calc(6px * var(--scale)) 0;white-space:nowrap}.line b{font-weight:900}
-.pay{margin-top:auto;padding-top:calc(9px * var(--scale));border-top:2px solid rgba(255,255,255,.3);text-align:center;flex:0 0 auto}.payLabel{font-size:calc(16px * var(--scale));font-weight:900;letter-spacing:.3px;white-space:nowrap}.money{font-size:calc(40px * var(--scale));font-weight:900;margin-top:4px;line-height:1.02;color:#fde047;white-space:nowrap}
-/* La escala aprovecha el espacio vertical disponible y conserva las cinco tarjetas. */
+.pay{margin-top:calc(7px * var(--scale));padding-top:calc(8px * var(--scale));border-top:2px solid rgba(255,255,255,.3);text-align:center;flex:0 0 auto}.payLabel{font-size:calc(16px * var(--scale));font-weight:900;letter-spacing:.3px;white-space:nowrap}.money{font-size:calc(40px * var(--scale));font-weight:900;margin-top:4px;line-height:1.02;color:#fde047;white-space:nowrap}
+/* El total queda inmediatamente debajo de Finalización y la escala sigue adaptándose a la pantalla. */
 @media(max-height:700px){header{height:58px;flex-basis:58px;padding:3px 5px}.wrap{padding:0 7px 5px}.grid{gap:5px;padding-top:5px}}
 @media(max-width:900px){header{height:56px;flex-basis:56px}.wrap{padding:0 6px 5px}.grid{gap:4px;padding-top:4px}.title{font-size:clamp(18px,4vw,28px)}.clock{font-size:clamp(15px,2.8vw,22px)}.live{font-size:clamp(12px,2.2vw,18px)}}
 </style>
