@@ -856,27 +856,6 @@ class _DashboardPageState extends State<DashboardPage>
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     if (!mounted) return false;
     try {
-      if (!await PrintBluetoothThermal.bluetoothEnabled) {
-        if (mounted) {
-          await showDialog<void>(
-            context: context,
-            builder:
-                (BuildContext dialogContext) => AlertDialog(
-                  title: const Text('Bluetooth desactivado'),
-                  content: const Text(
-                    'Activa Bluetooth en la tablet y vuelve a pulsar Configurar impresora térmica.',
-                  ),
-                  actions: <Widget>[
-                    FilledButton(
-                      onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text('Cerrar'),
-                    ),
-                  ],
-                ),
-          );
-        }
-        return false;
-      }
       final List<BluetoothInfo> printers =
           await PrintBluetoothThermal.pairedBluetooths;
       if (printers.isEmpty) {
