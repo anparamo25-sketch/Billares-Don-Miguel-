@@ -12,14 +12,18 @@ s = main.read_text()
 helper = '''  Future<List<BluetoothInfo>> loadThermalPrinters() async {
     try {
       final List<BluetoothInfo> printers =
-          await PrintBluetoothThermal.pairedBluetooths;
+          await PrintBluetoothThermal.pairedBluetooths.timeout(
+        const Duration(seconds: 3),
+        onTimeout: () => <BluetoothInfo>[],
+      );
       if (printers.isNotEmpty) return printers;
     } catch (_) {}
     try {
       final List<dynamic> native =
           await const MethodChannel('billaresdonmiguel/network')
-                  .invokeMethod<List<dynamic>>('getBondedBluetoothDevices') ??
-              <dynamic>[];
+              .invokeMethod<List<dynamic>>('getBondedBluetoothDevices')
+              .timeout(const Duration(seconds: 3)) ??
+          <dynamic>[];
       return native.map((dynamic item) {
         final Map<dynamic, dynamic> data = Map<dynamic, dynamic>.from(item as Map);
         return BluetoothInfo(
@@ -49,7 +53,6 @@ if 'loadThermalPrinters()' not in block:
     raise SystemExit('ERROR: configureThermalPrinter no usa loadThermalPrinters().')
 main.write_text(s)
 
-# Android files are generated here so the release build always receives the same native bridge.
 android = Path('android')
 if not (android / 'app' / 'build.gradle.kts').exists():
     raise SystemExit('ERROR: la plataforma Android no fue inicializada.')
