@@ -9,3 +9,7 @@ La compilación 1.2.9/129 valida y corrige la cabecera WebP del logo de TV antes
 ## Build
 
 Compilación completa posterior a la corrección permanente de Cobrar > Imprimir Bluetooth.
+
+## Build printer configuration
+
+Compilación completa posterior a la corrección permanente del botón Configurar impresora térmica.
