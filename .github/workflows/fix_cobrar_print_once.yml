@@ -10,6 +10,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FLUTTER_VERSION: 3.47.3
+
 jobs:
   fix:
     runs-on: ubuntu-latest
@@ -19,6 +22,13 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: true
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
 
       - name: Corregir permanentemente Cobrar > Imprimir
         shell: bash
@@ -30,7 +40,7 @@ jobs:
           p = Path('lib/main.dart')
           s = p.read_text()
           old = """      final bool enabled = await PrintBluetoothThermal.bluetoothEnabled;\n      if (!enabled) return 'Activa Bluetooth en la tablet para imprimir.';\n      final bool permission =\n          await PrintBluetoothThermal.isPermissionBluetoothGranted;\n      if (!permission) {\n        return 'Concede el permiso de Bluetooth y vuelve a intentar.';\n      }\n      final List<BluetoothInfo> printers =\n          await PrintBluetoothThermal.pairedBluetooths;\n      if (printers.isEmpty) {\n        return 'No hay impresoras Bluetooth emparejadas con la tablet.';\n      }\n"""
-          new = """      // print_bluetooth_thermal 1.2.4 gestiona el permiso Bluetooth de Android 12+\n      // al consultar las impresoras emparejadas. No usamos bluetoothEnabled ni\n      // isPermissionBluetoothGranted como bloqueo previo porque ese estado puede\n      // devolver false aunque el adaptador ya este encendido, provocando el falso\n      // mensaje "Activa Bluetooth en la tablet" en Cobrar > Imprimir.\n      final List<BluetoothInfo> printers =\n          await PrintBluetoothThermal.pairedBluetooths;\n      if (printers.isEmpty) {\n        return 'No hay impresoras Bluetooth emparejadas con la tablet. Verifica el emparejamiento en Ajustes > Bluetooth.';\n      }\n"""
+          new = """      // print_bluetooth_thermal 1.2.4 gestiona el permiso Bluetooth de Android 12+\n      // al consultar las impresoras emparejadas. No usamos bluetoothEnabled ni\n      // isPermissionBluetoothGranted como bloqueo previo porque ese estado puede\n      // devolver false aunque el adaptador ya este encendido, provocando el falso\n      // mensaje \"Activa Bluetooth en la tablet\" en Cobrar > Imprimir.\n      final List<BluetoothInfo> printers =\n          await PrintBluetoothThermal.pairedBluetooths;\n      if (printers.isEmpty) {\n        return 'No hay impresoras Bluetooth emparejadas con la tablet. Verifica el emparejamiento en Ajustes > Bluetooth.';\n      }\n"""
           if old not in s:
               raise SystemExit('No se encontro exactamente el flujo Cobrar > Imprimir que debe corregirse.')
           if s.count(old) != 1:
