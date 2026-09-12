@@ -23,6 +23,7 @@ env:
   MIN_SDK: 23
   COMPILE_SDK: 36
   NDK_VERSION: 27.0.12077973
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx6g\ -XX:MaxMetaspaceSize=2g\ -XX:+HeapDumpOnOutOfMemoryError\ -Dfile.encoding=UTF-8
 
 jobs:
   build:
@@ -166,6 +167,8 @@ jobs:
         run: flutter clean
 
       - name: Compilar APK release
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8
         run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
 
       - name: Validar APK instalable y universal
