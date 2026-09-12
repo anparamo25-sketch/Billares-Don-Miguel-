@@ -1,0 +1,1 @@
+Permanent thermal printer configuration correction trigger for the next build.
