@@ -141,6 +141,30 @@ jobs:
           grep -q "ReceiptPreviewPage" lib/main.dart
           grep -q "'billaresdonmiguel/network'" lib/main.dart
 
+      - name: Preparar Gradle Wrapper determinista
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -x android/gradlew ] || [ ! -f android/gradle/wrapper/gradle-wrapper.jar ] || [ ! -f android/gradle/wrapper/gradle-wrapper.properties ]; then
+            TMP_PROJECT="$(mktemp -d)"
+            flutter create --platforms=android --project-name=gradle_bootstrap --org=com.billaresdonmiguel "$TMP_PROJECT"
+            cp "$TMP_PROJECT/android/gradlew" android/gradlew
+            cp "$TMP_PROJECT/android/gradlew.bat" android/gradlew.bat
+            mkdir -p android/gradle/wrapper
+            cp "$TMP_PROJECT/android/gradle/wrapper/gradle-wrapper.jar" android/gradle/wrapper/gradle-wrapper.jar
+            cp "$TMP_PROJECT/android/gradle/wrapper/gradle-wrapper.properties" android/gradle/wrapper/gradle-wrapper.properties
+            chmod +x android/gradlew
+            rm -rf "$TMP_PROJECT"
+          fi
+          test -x android/gradlew
+          test -s android/gradle/wrapper/gradle-wrapper.jar
+          test -s android/gradle/wrapper/gradle-wrapper.properties
+          cd android
+          ./gradlew --version
+
+      - name: Limpiar intermediarios antes de compilar
+        run: flutter clean
+
       - name: Compilar APK release
         run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
 
