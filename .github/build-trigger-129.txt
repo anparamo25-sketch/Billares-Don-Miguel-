@@ -1,2 +1,3 @@
 Trigger de ejecución para Billares Don Miguel 1.2.9/129.
 La corrección real del logo WebP ya está en build-apk.yml; este archivo provoca una nueva ejecución desde main sin relanzar la ejecución fallida anterior.
+Reejecución para aplicar y verificar la corrección permanente de impresora térmica Bluetooth.
