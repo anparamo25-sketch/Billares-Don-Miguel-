@@ -1,1 +1,1 @@
-build 1.2.9 thermal printer discovery - syntax corrected workflow
+build 1.2.9 thermal printer discovery - final clean pipeline launch
