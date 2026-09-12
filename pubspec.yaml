@@ -1,8 +1,8 @@
 name: billares_don_miguel
 description: Sistema de control de mesas de billar para Billares Don Miguel.
 publish_to: "none"
-version: 1.3.0+130
-# Fuente estable 1.3.0 preparada para compilacion release.
+version: 1.2.9+129
+# Fuente estable 1.2.9 lista para compilacion release.
 environment:
   sdk: ">=3.7.0 <4.0.0"
   flutter: ">=3.44.0"
