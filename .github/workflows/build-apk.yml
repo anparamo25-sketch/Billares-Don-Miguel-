@@ -155,6 +155,11 @@ jobs:
           TAG="v${BUILD_NAME}-build${BUILD_NUMBER}"
           APK="build/app/outputs/flutter-apk/app-release.apk"
           ASSET="Billares-Don-Miguel-v${BUILD_NAME}-build${BUILD_NUMBER}.apk"
+          test -s "$APK"
+          cp "$APK" "$ASSET"
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Billares Don Miguel v${BUILD_NAME} (build ${BUILD_NUMBER})" --notes "APK release directa de Billares Don Miguel ${BUILD_NAME}+${BUILD_NUMBER}."
-          gh release upload "$TAG" "$APK#$ASSET" SHA256SUM.txt --clobber
+          if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq 'app-release.apk'; then
+            gh release delete-asset "$TAG" 'app-release.apk' --yes
+          fi
+          gh release upload "$TAG" "$ASSET" SHA256SUM.txt --clobber
           echo "DIRECT_APK_URL=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}" >> "$GITHUB_STEP_SUMMARY"
