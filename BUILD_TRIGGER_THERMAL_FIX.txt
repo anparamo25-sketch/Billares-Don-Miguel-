@@ -1,0 +1,1 @@
+Trigger for permanent thermal printer correction build.
