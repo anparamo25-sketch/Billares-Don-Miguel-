@@ -1,2 +1,1 @@
-Trigger de ejecución para Billares Don Miguel 1.2.9/129.
-Corrección permanente de impresora térmica Bluetooth y compilación de emergencia para entrega.
+Clean build trigger after restoring stable source and permanent Android Bluetooth/LAN configuration.
