@@ -11,29 +11,29 @@
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#05070b;color:#fff;font-family:Arial,sans-serif}
 .wrap{width:100%;height:100vh;padding:0 10px 7px;display:flex;flex-direction:column;overflow:hidden}
 header{height:68px;flex:0 0 68px;padding:4px 7px;background:#fff;border-bottom:3px solid #1557c0;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px}
-.title{justify-self:start;color:#1557c0;font-size:clamp(21px,2.7vw,34px);font-weight:900;line-height:1.02;letter-spacing:.2px}.logoWrap{display:none}.liveBox{justify-self:end;text-align:center;color:#1557c0}.clock{font-size:clamp(16px,1.7vw,23px);font-weight:900;line-height:1.05}.live{font-size:clamp(13px,1.4vw,19px);font-weight:900;margin-top:2px}
+.title{justify-self:start;color:#1557c0;font-size:clamp(23px,3vw,38px);font-weight:900;line-height:1.02;letter-spacing:.2px}.logoWrap{display:none}.liveBox{justify-self:end;text-align:center;color:#1557c0}.clock{font-size:clamp(18px,1.9vw,26px);font-weight:900;line-height:1.05}.live{font-size:clamp(14px,1.55vw,21px);font-weight:900;margin-top:2px}
 .grid{width:100%;flex:1;min-height:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;padding:7px 0 0;overflow:hidden}
 .card{height:100%;min-height:0;border-radius:10px;padding:9px 9px 7px;border:3px solid #64748b;display:flex;flex-direction:column;box-shadow:0 4px 10px rgba(0,0,0,.28);overflow:hidden}
 .green{background:#103b22;border-color:#22c55e}.red{background:#511b1b;border-color:#ef4444}.yellow{background:#56490a;border-color:#eab308}
-.num{font-size:clamp(21px,2.2vw,31px);font-weight:900;line-height:1.02}.status{font-size:clamp(14px,1.35vw,19px);font-weight:900;margin:3px 0 5px;line-height:1.02}.green .status{color:#4ade80}.red .status{color:#f87171}.yellow .status{color:#fde047}
-.rate{font-size:clamp(14px,1.3vw,18px);font-weight:900;line-height:1.05;margin:0 0 5px}.line{font-size:clamp(13px,1.25vw,17px);font-weight:700;line-height:1.13;margin:3px 0;white-space:normal}.line b{font-weight:900}
-.pay{margin-top:auto;padding-top:6px;border-top:2px solid rgba(255,255,255,.3);text-align:center}.payLabel{font-size:clamp(12px,1.15vw,16px);font-weight:900;letter-spacing:.3px}.money{font-size:clamp(25px,2.55vw,37px);font-weight:900;margin-top:2px;line-height:1.02;color:#fde047}
-/* Optimización específica para televisores de 32 pulgadas en resolución HD/Full HD */
+.num{font-size:clamp(23px,2.45vw,34px);font-weight:900;line-height:1.02}.status{font-size:clamp(16px,1.55vw,21px);font-weight:900;margin:4px 0 5px;line-height:1.02}.green .status{color:#4ade80}.red .status{color:#f87171}.yellow .status{color:#fde047}
+.rate{font-size:clamp(16px,1.5vw,20px);font-weight:900;line-height:1.05;margin:0 0 5px}.line{font-size:clamp(15px,1.45vw,19px);font-weight:700;line-height:1.13;margin:3px 0;white-space:normal}.line b{font-weight:900}
+.pay{margin-top:auto;padding-top:6px;border-top:2px solid rgba(255,255,255,.3);text-align:center}.payLabel{font-size:clamp(13px,1.3vw,18px);font-weight:900;letter-spacing:.3px}.money{font-size:clamp(28px,2.8vw,42px);font-weight:900;margin-top:2px;line-height:1.02;color:#fde047}
+/* TV 32 pulgadas: texto priorizado para lectura a distancia */
 @media (min-width:1100px) and (max-width:1450px) and (max-height:850px){
  .wrap{padding:0 8px 6px}
  header{height:62px;flex-basis:62px;padding:3px 6px}
  .grid{gap:6px;padding-top:6px}
  .card{padding:8px 8px 6px;border-radius:9px}
- .num{font-size:clamp(20px,2.15vw,29px)}
- .status{font-size:clamp(13px,1.28vw,18px);margin:3px 0 4px}
- .rate{font-size:clamp(13px,1.22vw,17px);margin-bottom:4px}
- .line{font-size:clamp(12px,1.18vw,16px);margin:2px 0}
+ .num{font-size:clamp(22px,2.35vw,32px)}
+ .status{font-size:clamp(15px,1.48vw,20px);margin:3px 0 4px}
+ .rate{font-size:clamp(15px,1.42vw,19px);margin-bottom:4px}
+ .line{font-size:clamp(14px,1.38vw,18px);margin:2px 0}
  .pay{padding-top:5px}
- .payLabel{font-size:clamp(11px,1.05vw,15px)}
- .money{font-size:clamp(23px,2.4vw,34px)}
+ .payLabel{font-size:clamp(12px,1.18vw,17px)}
+ .money{font-size:clamp(27px,2.7vw,40px)}
 }
 @media(max-width:1100px){.grid{gap:5px}.card{padding-left:7px;padding-right:7px}}
-@media(max-height:700px){header{height:58px;flex-basis:58px;padding:3px 5px}.wrap{padding:0 7px 5px}.grid{gap:5px;padding-top:5px}.card{padding:7px 6px 5px;border-radius:8px}.status{margin:2px 0 4px}.rate{margin-bottom:3px}.line{font-size:clamp(12px,1.15vw,15px);margin:2px 0}.pay{padding-top:4px}.payLabel{font-size:11px}.money{font-size:clamp(22px,2.3vw,32px)}}
+@media(max-height:700px){header{height:58px;flex-basis:58px;padding:3px 5px}.wrap{padding:0 7px 5px}.grid{gap:5px;padding-top:5px}.card{padding:7px 6px 5px;border-radius:8px}.status{margin:2px 0 4px}.rate{margin-bottom:3px}.line{font-size:clamp(13px,1.25vw,17px);margin:2px 0}.pay{padding-top:4px}.payLabel{font-size:12px}.money{font-size:clamp(25px,2.5vw,36px)}}
 </style>
 </head>
 <body>
