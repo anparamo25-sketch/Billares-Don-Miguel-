@@ -13,3 +13,7 @@ Compilación completa posterior a la corrección permanente de Cobrar > Imprimir
 ## Build printer configuration
 
 Compilación completa posterior a la corrección permanente del botón Configurar impresora térmica.
+
+## Build verification
+
+Ejecución de compilación completa para verificar la corrección permanente de configuración Bluetooth de la impresora térmica.
