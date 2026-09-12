@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothManager
 import android.content.pm.PackageManager
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Bundle
 import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -15,6 +16,25 @@ class MainActivity : FlutterActivity() {
   private val bluetoothPermissionRequestCode = 4901
   private var pendingBluetoothResult: MethodChannel.Result? = null
   private var multicastLock: WifiManager.MulticastLock? = null
+
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    requestBluetoothPermissionsIfNeeded()
+  }
+
+  private fun requestBluetoothPermissionsIfNeeded() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+    val missing = mutableListOf<String>()
+    if (checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+      missing.add(Manifest.permission.BLUETOOTH_SCAN)
+    }
+    if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+      missing.add(Manifest.permission.BLUETOOTH_CONNECT)
+    }
+    if (missing.isNotEmpty()) {
+      requestPermissions(missing.toTypedArray(), bluetoothPermissionRequestCode)
+    }
+  }
 
   override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
@@ -69,7 +89,7 @@ class MainActivity : FlutterActivity() {
     if (requestCode != bluetoothPermissionRequestCode) return
     val result = pendingBluetoothResult ?: return
     pendingBluetoothResult = null
-    if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+    if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
       result.success(readBondedBluetoothDevices())
     } else {
       result.error("BLUETOOTH_PERMISSION", "Permiso Bluetooth no concedido.", null)
