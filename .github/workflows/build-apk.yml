@@ -104,7 +104,8 @@ jobs:
           grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
           grep -q 'applicationId = "com.billaresdonmiguel.billares_don_miguel"' android/app/build.gradle.kts
           grep -q 'android.permission.BLUETOOTH_CONNECT' android/app/src/main/AndroidManifest.xml
-          grep -q 'android:foregroundServiceType="connectedDevice"' android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.FOREGROUND_SERVICE' android/app/src/main/AndroidManifest.xml
+          grep -q 'android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE' android/app/src/main/AndroidManifest.xml
           grep -q 'getBondedBluetoothDevices' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
 
       - name: Dependencies
