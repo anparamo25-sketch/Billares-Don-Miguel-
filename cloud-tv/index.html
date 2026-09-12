@@ -7,30 +7,25 @@
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#05070b;color:#fff;font-family:Arial,sans-serif}
-.wrap{width:100%;height:100vh;padding:0 20px 16px;display:flex;flex-direction:column;overflow:hidden}
-header{height:112px;flex:0 0 112px;padding:12px 4px;background:#fff;border-bottom:3px solid #1557c0;display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
-.brandLogo{justify-self:start;display:flex;align-items:center;gap:10px;color:#1557c0;font-weight:900}
-.logoImg{height:90px;width:auto;max-width:none;display:block;object-fit:contain;flex:none}
-.word{font-size:18px;letter-spacing:.5px}
-.brandTitle{justify-self:center}.brandTitle h1{margin:0;font-size:clamp(32px,4.5vw,54px);line-height:1;color:#1557c0;text-align:center;text-shadow:0 2px 3px rgba(0,0,0,.18)}
-.liveBox{justify-self:end;text-align:center;color:#1557c0}.clock{font-size:clamp(18px,2vw,28px);font-weight:900;line-height:1.1}.live{font-size:clamp(16px,1.8vw,25px);font-weight:900;margin-top:5px}
-.grid{width:100%;flex:1;min-height:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px;padding:16px 0 0;overflow:hidden}
-.card{height:100%;min-height:0;border-radius:18px;padding:18px;border:3px solid #64748b;display:flex;flex-direction:column;box-shadow:0 8px 18px rgba(0,0,0,.25);overflow:hidden}
+.wrap{width:100%;height:100vh;padding:0 14px 10px;display:flex;flex-direction:column;overflow:hidden}
+header{height:82px;flex:0 0 82px;padding:7px 8px;background:#fff;border-bottom:3px solid #1557c0;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px}
+.brandLogo{justify-self:start;display:flex;align-items:center;gap:7px;color:#1557c0;font-weight:900}.logoImg{height:64px;width:auto;max-width:110px;display:block;object-fit:contain}.word{font-size:14px;letter-spacing:.4px}
+.brandTitle{justify-self:center}.brandTitle h1{margin:0;font-size:clamp(25px,3.2vw,42px);line-height:1;color:#1557c0;text-align:center;text-shadow:0 2px 3px rgba(0,0,0,.18)}
+.liveBox{justify-self:end;text-align:center;color:#1557c0}.clock{font-size:clamp(17px,1.8vw,25px);font-weight:900;line-height:1.05}.live{font-size:clamp(14px,1.5vw,21px);font-weight:900;margin-top:3px}
+.grid{width:100%;flex:1;min-height:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;padding:9px 0 0;overflow:hidden}
+.card{height:100%;min-height:0;border-radius:13px;padding:11px 10px 9px;border:3px solid #64748b;display:flex;flex-direction:column;box-shadow:0 5px 12px rgba(0,0,0,.25);overflow:hidden}
 .green{background:#103b22;border-color:#22c55e}.red{background:#511b1b;border-color:#ef4444}.yellow{background:#56490a;border-color:#eab308}
-.num{font-size:clamp(24px,2.7vw,38px);font-weight:900;line-height:1.05}.status{font-size:clamp(18px,2vw,27px);font-weight:900;margin:7px 0 12px;line-height:1.05}.green .status{color:#4ade80}.red .status{color:#f87171}.yellow .status{color:#fde047}
-.rate{font-size:clamp(17px,1.7vw,24px);font-weight:900;margin-bottom:8px;line-height:1.1}.line{font-size:clamp(18px,1.7vw,24px);font-weight:700;line-height:1.3;margin:5px 0}
-.pay{margin-top:auto;padding-top:11px;border-top:2px solid rgba(255,255,255,.25)}.payLabel{font-size:clamp(15px,1.5vw,21px);font-weight:900;letter-spacing:.5px}.money{font-size:clamp(30px,3.2vw,46px);font-weight:900;margin-top:3px;line-height:1.05}
-@media(max-height:700px){header{height:92px;flex-basis:92px}.wrap{padding:0 14px 10px}.grid{gap:10px;padding-top:10px}.card{padding:13px;border-radius:14px}.status{margin:5px 0 8px}.line{margin:3px 0;font-size:clamp(16px,1.6vw,22px)}.rate{margin-bottom:5px}.logoImg{height:90px}.word{font-size:15px}}
-@media(max-width:1200px) and (min-height:701px){.wrap{padding-left:14px;padding-right:14px}.grid{gap:10px}.card{padding:14px}.line{font-size:clamp(16px,1.6vw,22px)}}
+.num{font-size:clamp(22px,2.35vw,34px);font-weight:900;line-height:1.02}.status{font-size:clamp(15px,1.55vw,22px);font-weight:900;margin:4px 0 7px;line-height:1.02}.green .status{color:#4ade80}.red .status{color:#f87171}.yellow .status{color:#fde047}
+.rate{font-size:clamp(15px,1.5vw,21px);font-weight:900;margin:0 0 7px;line-height:1.05}.line{font-size:clamp(14px,1.45vw,20px);font-weight:700;line-height:1.18;margin:3px 0}
+.pay{margin-top:auto;padding-top:8px;border-top:2px solid rgba(255,255,255,.3);text-align:center}.payLabel{font-size:clamp(13px,1.25vw,18px);font-weight:900;letter-spacing:.4px}.money{font-size:clamp(27px,2.9vw,42px);font-weight:900;margin-top:2px;line-height:1.02;color:#fde047}
+@media(max-height:700px){header{height:72px;flex-basis:72px;padding:5px 6px}.wrap{padding:0 10px 7px}.grid{gap:7px;padding-top:7px}.card{padding:9px 8px 7px;border-radius:11px}.logoImg{height:55px}.word{display:none}.status{margin:3px 0 5px}.rate{margin-bottom:5px}.line{margin:2px 0;font-size:clamp(13px,1.35vw,18px)}.pay{padding-top:6px}.money{font-size:clamp(25px,2.7vw,38px)}}
+@media(max-width:1100px){.word{display:none}.grid{gap:7px}.card{padding-left:8px;padding-right:8px}}
 </style>
 </head>
 <body>
 <main class="wrap">
 <header>
-<div class="brandLogo">
-<img class="logoImg" src="../assets/tv-logo.webp" alt="Logo Billares Don Miguel">
-<div class="word">BILLARES</div>
-</div>
+<div class="brandLogo"><img class="logoImg" src="../assets/tv-logo.webp" alt="Logo Billares Don Miguel"><div class="word">BILLARES</div></div>
 <div class="brandTitle"><h1>Billares Don Miguel</h1></div>
 <div class="liveBox"><div id="clock" class="clock">--:-- PM</div><div class="live">🟢 EN VIVO</div></div>
 </header>
@@ -39,8 +34,8 @@ header{height:112px;flex:0 0 112px;padding:12px 4px;background:#fff;border-botto
 <script>
 const rates={1:120,2:120,3:100,4:100,5:70};let state={};
 function safe(v){return v==null||v===''?'—':String(v)}
-function money(v){return 'C$ '+Number(v||0).toFixed(2)}
-function render(){const root=document.getElementById('tables');root.innerHTML='';for(let i=1;i<=5;i++){const t=state[i]||{status:'Disponible',rate:rates[i],amount:0};const cls=t.status==='En juego'?'red':t.status==='Pendiente de cobro'?'yellow':'green';root.innerHTML+=`<article class="card ${cls}"><div class="num">Mesa ${i}</div><div class="status">${safe(t.status||'Disponible')}</div><div class="rate">Tarifa por hora: ${money(t.rate??rates[i])}</div><div class="line"><b>Hora de inicio:</b> ${safe(t.start)}</div><div class="line"><b>Tiempo jugado:</b> ${safe(t.elapsed)}</div><div class="line"><b>Hora finalizada:</b> ${safe(t.end)}</div><div class="pay"><div class="payLabel">MONTO A PAGAR</div><div class="money">${money(t.amount)}</div></div></article>`}}
+function money(v){return v==null||v===''?'—':'C$ '+Math.round(Number(v)||0)}
+function render(){const root=document.getElementById('tables');root.innerHTML='';for(let i=1;i<=5;i++){const t=state[i]||{status:'Disponible',rate:rates[i],amount:null};const cls=t.status==='En juego'?'red':t.status==='Pendiente de cobro'?'yellow':'green';const totalLabel=t.status==='En juego'?'TOTAL ACTUAL':'TOTAL A PAGAR';root.innerHTML+=`<article class="card ${cls}"><div class="num">Mesa ${i}</div><div class="status">${safe(t.status||'Disponible')}</div><div class="rate">Tarifa: ${money(t.rate??rates[i])} / hora</div><div class="line"><b>Inicio:</b> ${safe(t.start)}</div><div class="line"><b>Tiempo jugado:</b> ${safe(t.elapsed)}</div><div class="line"><b>Finalización:</b> ${safe(t.end)}</div><div class="pay"><div class="payLabel">${totalLabel}</div><div class="money">${money(t.amount)}</div></div></article>`}}
 function connect(){const protocol=location.protocol==='https:'?'wss:':'ws:';const ws=new WebSocket(protocol+'//'+location.host+'/ws');ws.onopen=()=>{updateClock()};ws.onmessage=e=>{try{state=JSON.parse(e.data);render()}catch(_){}};ws.onclose=()=>setTimeout(connect,3000)}
 function updateClock(){document.getElementById('clock').textContent=new Date().toLocaleTimeString('es-NI',{hour:'2-digit',minute:'2-digit',hour12:true})}render();updateClock();setInterval(updateClock,1000);connect();
 </script>
