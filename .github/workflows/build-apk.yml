@@ -70,22 +70,18 @@ jobs:
           if git diff --quiet; then
             exit 0
           fi
-
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add lib/main.dart android
           git commit -m 'fix: permanently integrate thermal printer discovery'
-
           git fetch origin main
           git rebase origin/main
-
           python3 scripts/permanent_printer_integration.py
           dart format lib/main.dart
           git add lib/main.dart android
           if ! git diff --cached --quiet; then
             git commit -m 'fix: preserve permanent thermal printer integration after sync'
           fi
-
           git push origin HEAD:main
 
       - name: Prepare Android SDK and NDK
@@ -121,7 +117,7 @@ jobs:
         run: flutter test
 
       - name: Build APK
-        run: flutter build apk --release --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
+        run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
 
       - name: Validate APK
         shell: bash
@@ -129,20 +125,39 @@ jobs:
           set -euo pipefail
           APK="build/app/outputs/flutter-apk/app-release.apk"
           AAPT="${ANDROID_HOME}/build-tools/36.0.0/aapt"
+          APKSIGNER="${ANDROID_HOME}/build-tools/36.0.0/apksigner"
           test -s "$APK"
           test -x "$AAPT"
+          test -x "$APKSIGNER"
           file "$APK"
           sha256sum "$APK" | tee SHA256SUM.txt
+          "$AAPT" dump badging "$APK" | grep -q "package: name='com.billaresdonmiguel.billares_don_miguel'"
           "$AAPT" dump badging "$APK" | grep -q "versionName='${BUILD_NAME}'"
           "$AAPT" dump badging "$APK" | grep -q "versionCode='${BUILD_NUMBER}'"
+          "$APKSIGNER" verify --verbose "$APK"
+          if zipinfo -1 "$APK" | grep -Eq '^split_config|^config\.'; then
+            echo 'ERROR: APK no universal'
+            exit 1
+          fi
+
+      - name: Prepare distributable APK package
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          mkdir -p dist
+          cp "$APK" "dist/Billares-Don-Miguel-v${BUILD_NAME}-build${BUILD_NUMBER}-run${{ github.run_number }}.apk"
+          cp "$APK" dist/Billares-Don-Miguel-latest.apk
+          cp SHA256SUM.txt dist/SHA256SUMS.txt
+          test -s "dist/Billares-Don-Miguel-latest.apk"
+          file dist/*.apk
+          sha256sum dist/*.apk | tee -a dist/SHA256SUMS.txt
 
       - name: Publish APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Billares-Don-Miguel-APK-v1.2.9-build129
-          path: |
-            build/app/outputs/flutter-apk/app-release.apk
-            SHA256SUM.txt
+          name: Billares-Don-Miguel-APK-v${{ env.BUILD_NAME }}-build${{ env.BUILD_NUMBER }}-run${{ github.run_number }}
+          path: dist/*
           if-no-files-found: error
           retention-days: 30
 
@@ -152,14 +167,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="v${BUILD_NAME}-build${BUILD_NUMBER}"
-          APK="build/app/outputs/flutter-apk/app-release.apk"
+          TAG="v${BUILD_NAME}-build${{ github.run_number }}"
           ASSET="Billares-Don-Miguel-v${BUILD_NAME}-build${BUILD_NUMBER}.apk"
+          APK="dist/Billares-Don-Miguel-latest.apk"
           test -s "$APK"
           cp "$APK" "$ASSET"
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Billares Don Miguel v${BUILD_NAME} (build ${BUILD_NUMBER})" --notes "APK release directa de Billares Don Miguel ${BUILD_NAME}+${BUILD_NUMBER}."
-          if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fxq 'app-release.apk'; then
-            gh release delete-asset "$TAG" 'app-release.apk' --yes
-          fi
-          gh release upload "$TAG" "$ASSET" SHA256SUM.txt --clobber
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Billares Don Miguel v${BUILD_NAME} (build ${{ github.run_number }})" --notes "APK directa instalable de Billares Don Miguel ${BUILD_NAME}+${BUILD_NUMBER}."
+          gh release upload "$TAG" "$ASSET" dist/SHA256SUMS.txt --clobber
           echo "DIRECT_APK_URL=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}" >> "$GITHUB_STEP_SUMMARY"
