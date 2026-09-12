@@ -856,12 +856,50 @@ class _DashboardPageState extends State<DashboardPage>
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     if (!mounted) return false;
     try {
-      if (!await PrintBluetoothThermal.bluetoothEnabled) return false;
-      if (!await PrintBluetoothThermal.isPermissionBluetoothGranted)
+      if (!await PrintBluetoothThermal.bluetoothEnabled) {
+        if (mounted) {
+          await showDialog<void>(
+            context: context,
+            builder:
+                (BuildContext dialogContext) => AlertDialog(
+                  title: const Text('Bluetooth desactivado'),
+                  content: const Text(
+                    'Activa Bluetooth en la tablet y vuelve a pulsar Configurar impresora térmica.',
+                  ),
+                  actions: <Widget>[
+                    FilledButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: const Text('Cerrar'),
+                    ),
+                  ],
+                ),
+          );
+        }
         return false;
+      }
       final List<BluetoothInfo> printers =
           await PrintBluetoothThermal.pairedBluetooths;
-      if (printers.isEmpty) return false;
+      if (printers.isEmpty) {
+        if (mounted) {
+          await showDialog<void>(
+            context: context,
+            builder:
+                (BuildContext dialogContext) => AlertDialog(
+                  title: const Text('Sin impresoras emparejadas'),
+                  content: const Text(
+                    'Primero empareja la impresora térmica desde Ajustes > Bluetooth de Android. Después vuelve aquí para seleccionarla.',
+                  ),
+                  actions: <Widget>[
+                    FilledButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: const Text('Entendido'),
+                    ),
+                  ],
+                ),
+          );
+        }
+        return false;
+      }
       final String? savedMac = prefs.getString('thermal_printer_mac');
       final String? selectedMac = await showDialog<String>(
         context: context,
