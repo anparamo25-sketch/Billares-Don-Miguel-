@@ -128,11 +128,13 @@ jobs:
         run: |
           set -euo pipefail
           APK="build/app/outputs/flutter-apk/app-release.apk"
+          AAPT="${ANDROID_HOME}/build-tools/36.0.0/aapt"
           test -s "$APK"
+          test -x "$AAPT"
           file "$APK"
           sha256sum "$APK" | tee SHA256SUM.txt
-          aapt dump badging "$APK" | grep -q "versionName='${BUILD_NAME}'"
-          aapt dump badging "$APK" | grep -q "versionCode='${BUILD_NUMBER}'"
+          "$AAPT" dump badging "$APK" | grep -q "versionName='${BUILD_NAME}'"
+          "$AAPT" dump badging "$APK" | grep -q "versionCode='${BUILD_NUMBER}'"
 
       - name: Publish APK artifact
         uses: actions/upload-artifact@v4
@@ -152,5 +154,7 @@ jobs:
           set -euo pipefail
           TAG="v${BUILD_NAME}-build${BUILD_NUMBER}"
           APK="build/app/outputs/flutter-apk/app-release.apk"
+          ASSET="Billares-Don-Miguel-v${BUILD_NAME}-build${BUILD_NUMBER}.apk"
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Billares Don Miguel v${BUILD_NAME} (build ${BUILD_NUMBER})" --notes "APK release directa de Billares Don Miguel ${BUILD_NAME}+${BUILD_NUMBER}."
-          gh release upload "$TAG" "$APK#Billares-Don-Miguel-v${BUILD_NAME}-build${BUILD_NUMBER}.apk" SHA256SUM.txt --clobber
+          gh release upload "$TAG" "$APK#$ASSET" SHA256SUM.txt --clobber
+          echo "DIRECT_APK_URL=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}" >> "$GITHUB_STEP_SUMMARY"
