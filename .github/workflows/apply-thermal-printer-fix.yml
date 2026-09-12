@@ -25,15 +25,18 @@ jobs:
           from pathlib import Path
           p = Path('lib/main.dart')
           s = p.read_text()
-          old = """      if (!await PrintBluetoothThermal.bluetoothEnabled) return false;\n      if (!await PrintBluetoothThermal.isPermissionBluetoothGranted)\n        return false;\n      final List<BluetoothInfo> printers =\n          await PrintBluetoothThermal.pairedBluetooths;\n      if (printers.isEmpty) return false;\n"""
-          new = """      if (!await PrintBluetoothThermal.bluetoothEnabled) {\n        if (mounted) {\n          await showDialog<void>(\n            context: context,\n            builder: (BuildContext dialogContext) => AlertDialog(\n              title: const Text('Bluetooth desactivado'),\n              content: const Text(\n                'Activa Bluetooth en la tablet y vuelve a pulsar Configurar impresora térmica.',\n              ),\n              actions: <Widget>[\n                FilledButton(\n                  onPressed: () => Navigator.pop(dialogContext),\n                  child: const Text('Cerrar'),\n                ),\n              ],\n            ),\n          );\n        }\n        return false;\n      }\n      final List<BluetoothInfo> printers =\n          await PrintBluetoothThermal.pairedBluetooths;\n      if (printers.isEmpty) {\n        if (mounted) {\n          await showDialog<void>(\n            context: context,\n            builder: (BuildContext dialogContext) => AlertDialog(\n              title: const Text('Sin impresoras emparejadas'),\n              content: const Text(\n                'Primero empareja la impresora térmica desde Ajustes > Bluetooth de Android. Después vuelve aquí para seleccionarla.',\n              ),\n              actions: <Widget>[\n                FilledButton(\n                  onPressed: () => Navigator.pop(dialogContext),\n                  child: const Text('Entendido'),\n                ),\n              ],\n            ),\n          );\n        }\n        return false;\n      }\n"""
+          old = """      if (!await PrintBluetoothThermal.bluetoothEnabled) {\n        if (mounted) {\n          await showDialog<void>(\n            context: context,\n            builder: (BuildContext dialogContext) => AlertDialog(\n              title: const Text('Bluetooth desactivado'),\n              content: const Text(\n                'Activa Bluetooth en la tablet y vuelve a pulsar Configurar impresora térmica.',\n              ),\n              actions: <Widget>[\n                FilledButton(\n                  onPressed: () => Navigator.pop(dialogContext),\n                  child: const Text('Cerrar'),\n                ),\n              ],\n            ),\n          );\n        }\n        return false;\n      }\n      final List<BluetoothInfo> printers =\n          await PrintBluetoothThermal.pairedBluetooths;\n"""
+          new = """      final List<BluetoothInfo> printers =\n          await PrintBluetoothThermal.pairedBluetooths;\n"""
           if old not in s:
-              raise SystemExit('No se encontró exactamente el bloque de configuración térmica esperado')
+              raise SystemExit('No se encontró exactamente el falso bloqueo Bluetooth de Configurar impresora.')
           p.write_text(s.replace(old, new, 1))
           PY
-          dart format lib/main.dart
           git diff --check
-          git diff -- lib/main.dart
+          if grep -n "Bluetooth desactivado" lib/main.dart; then
+            echo 'ERROR: permanece el falso bloqueo Bluetooth.'
+            exit 1
+          fi
+          grep -n -A5 -B4 "pairedBluetooths" lib/main.dart | head -n 20
       - name: Commit permanent correction
         shell: bash
         run: |
