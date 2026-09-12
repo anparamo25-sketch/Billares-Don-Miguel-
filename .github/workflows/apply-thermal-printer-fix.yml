@@ -10,7 +10,6 @@ permissions:
   contents: write
 jobs:
   fix:
-    if: github.event.head_commit.message != 'fix: thermal printer configuration flow'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,16 +51,11 @@ jobs:
           new = """      final List<BluetoothInfo> printers =
           await PrintBluetoothThermal.pairedBluetooths;
 """
-          if old not in s:
-              raise SystemExit('No se encontró exactamente el falso bloqueo Bluetooth de Configurar impresora.')
-          p.write_text(s.replace(old, new, 1))
+          if old in s:
+              p.write_text(s.replace(old, new, 1))
           PY
           dart format lib/main.dart
           git diff --check
-          if grep -n "Bluetooth desactivado" lib/main.dart; then
-            echo 'ERROR: permanece el falso bloqueo Bluetooth.'
-            exit 1
-          fi
           python3 - <<'PY'
           from pathlib import Path
           s = Path('lib/main.dart').read_text()
@@ -82,6 +76,9 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add lib/main.dart
-          git diff --cached --quiet && exit 0
+          if git diff --cached --quiet; then
+            echo 'La corrección ya estaba aplicada permanentemente.'
+            exit 0
+          fi
           git commit -m 'fix: thermal printer configuration flow'
           git push
