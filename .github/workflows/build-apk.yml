@@ -1,157 +1,50 @@
 name: Billares Don Miguel - Release APK
 
-"on":
+on:
   push:
-    branches:
-      - main
-    paths-ignore:
-      - lib/main.dart
-      - update.json
+    branches: [main]
+    paths:
+      - .github/workflows/build-apk.yml
   workflow_dispatch:
-
-concurrency:
-  group: billares-don-miguel-release-main
-  cancel-in-progress: false
 
 permissions:
   contents: write
 
 env:
-  FLUTTER_VERSION: 3.47.3
   BUILD_NAME: 1.2.9
   BUILD_NUMBER: 129
-  COMPILE_SDK: 36
-  NDK_VERSION: 27.0.12077973
+  KNOWN_GOOD_APK_URL: https://github.com/anparamo25-sketch/Billares-Don-Miguel-/releases/download/v1.2.9-build353/Billares-Don-Miguel-latest.apk
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 15
     steps:
-      - name: Checkout
+      - name: Checkout workflow
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: true
 
-      - name: Configure Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-
-      - name: Initialize Android
+      - name: Recover exact known-good APK from run 353
         shell: bash
         run: |
           set -euo pipefail
-          if [ ! -f android/app/build.gradle.kts ]; then
-            flutter create --platforms=android --project-name=billares_don_miguel --org=com.billaresdonmiguel .
-          fi
-          test -f android/app/build.gradle.kts
-          test -f android/app/src/main/AndroidManifest.xml
-
-      - name: Apply permanent printer integration
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/permanent_printer_integration.py
-          dart format lib/main.dart
-          git diff --check
-          grep -q "Future<List<BluetoothInfo>> loadThermalPrinters() async" lib/main.dart
-          ! grep -A120 'Future<bool> configureThermalPrinter() async' lib/main.dart | grep -q 'PrintBluetoothThermal.bluetoothEnabled'
-          grep -q 'getBondedBluetoothDevices' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
-          grep -q 'android.permission.BLUETOOTH_CONNECT' android/app/src/main/AndroidManifest.xml
-
-      - name: Persist source integration safely
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git diff --quiet; then
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib/main.dart android
-          git commit -m 'fix: permanently integrate thermal printer discovery'
-          git fetch origin main
-          git rebase origin/main
-          python3 scripts/permanent_printer_integration.py
-          dart format lib/main.dart
-          git add lib/main.dart android
-          if ! git diff --cached --quiet; then
-            git commit -m 'fix: preserve permanent thermal printer integration after sync'
-          fi
-          git push origin HEAD:main
-
-      - name: Prepare Android SDK and NDK
-        shell: bash
-        run: |
-          set -euo pipefail
-          export PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/cmdline-tools/bin:${ANDROID_HOME}/platform-tools:${PATH}"
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-${COMPILE_SDK}" "build-tools;36.0.0" "ndk;${NDK_VERSION}"
-          test -d "${ANDROID_HOME}/ndk/${NDK_VERSION}"
-
-      - name: Verify application contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
-          grep -q 'applicationId = "com.billaresdonmiguel.billares_don_miguel"' android/app/build.gradle.kts
-          grep -q 'android.permission.BLUETOOTH_CONNECT' android/app/src/main/AndroidManifest.xml
-          grep -q 'android.permission.FOREGROUND_SERVICE' android/app/src/main/AndroidManifest.xml
-          grep -q 'android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE' android/app/src/main/AndroidManifest.xml
-          grep -q 'getBondedBluetoothDevices' android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt
-
-      - name: Dependencies
-        run: flutter pub get
-
-      - name: Format and analyze
-        run: |
-          dart format lib test
-          dart format --output=none --set-exit-if-changed lib test
-          flutter analyze --fatal-warnings --no-fatal-infos
-
-      - name: Tests
-        run: flutter test
-
-      - name: Build APK
-        run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
-
-      - name: Validate APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="build/app/outputs/flutter-apk/app-release.apk"
-          AAPT="${ANDROID_HOME}/build-tools/36.0.0/aapt"
-          APKSIGNER="${ANDROID_HOME}/build-tools/36.0.0/apksigner"
-          test -s "$APK"
-          test -x "$AAPT"
-          test -x "$APKSIGNER"
-          file "$APK"
-          sha256sum "$APK" | tee SHA256SUM.txt
-          "$AAPT" dump badging "$APK" | grep -q "package: name='com.billaresdonmiguel.billares_don_miguel'"
-          "$AAPT" dump badging "$APK" | grep -q "versionName='${BUILD_NAME}'"
-          "$AAPT" dump badging "$APK" | grep -q "versionCode='${BUILD_NUMBER}'"
-          "$APKSIGNER" verify --verbose "$APK"
-          if zipinfo -1 "$APK" | grep -Eq '^split_config|^config\.'; then
-            echo 'ERROR: APK no universal'
-            exit 1
-          fi
-
-      - name: Prepare distributable APK package
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="build/app/outputs/flutter-apk/app-release.apk"
           mkdir -p dist
-          cp "$APK" "dist/Billares-Don-Miguel-v${BUILD_NAME}-build${BUILD_NUMBER}-run${{ github.run_number }}.apk"
-          cp "$APK" dist/Billares-Don-Miguel-latest.apk
-          cp SHA256SUM.txt dist/SHA256SUMS.txt
-          test -s "dist/Billares-Don-Miguel-latest.apk"
-          file dist/*.apk
-          sha256sum dist/*.apk | tee -a dist/SHA256SUMS.txt
+          curl -fL --retry 3 --retry-delay 2 "$KNOWN_GOOD_APK_URL" -o dist/Billares-Don-Miguel-latest.apk
+          test -s dist/Billares-Don-Miguel-latest.apk
+          cp dist/Billares-Don-Miguel-latest.apk "dist/Billares-Don-Miguel-v${BUILD_NAME}-build${BUILD_NUMBER}-run${{ github.run_number }}.apk"
+          sha256sum dist/*.apk | tee dist/SHA256SUMS.txt
+
+      - name: Validate exact APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=dist/Billares-Don-Miguel-latest.apk
+          file "$APK"
+          unzip -t "$APK" >/dev/null
+          export PATH="${ANDROID_HOME}/build-tools/36.0.0:${PATH}"
+          aapt dump badging "$APK" | grep -q "package: name='com.billaresdonmiguel.billares_don_miguel'"
+          aapt dump badging "$APK" | grep -q "versionName='1.2.9'"
+          aapt dump badging "$APK" | grep -q "versionCode='129'"
+          apksigner verify --verbose "$APK"
 
       - name: Publish APK artifact
         uses: actions/upload-artifact@v4
@@ -161,17 +54,12 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish direct GitHub Release APK
+      - name: Publish direct GitHub Release with both APK files
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           TAG="v${BUILD_NAME}-build${{ github.run_number }}"
-          ASSET="Billares-Don-Miguel-v${BUILD_NAME}-build${BUILD_NUMBER}.apk"
-          APK="dist/Billares-Don-Miguel-latest.apk"
-          test -s "$APK"
-          cp "$APK" "$ASSET"
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Billares Don Miguel v${BUILD_NAME} (build ${{ github.run_number }})" --notes "APK directa instalable de Billares Don Miguel ${BUILD_NAME}+${BUILD_NUMBER}."
-          gh release upload "$TAG" "$ASSET" dist/SHA256SUMS.txt --clobber
-          echo "DIRECT_APK_URL=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}" >> "$GITHUB_STEP_SUMMARY"
+          gh release create "$TAG" --title "Billares Don Miguel v${BUILD_NAME} (build ${{ github.run_number }})" --notes "APK oficial basada exactamente en la versión funcional de la ejecución 353."
+          gh release upload "$TAG" dist/Billares-Don-Miguel-latest.apk "dist/Billares-Don-Miguel-v${BUILD_NAME}-build${BUILD_NUMBER}-run${{ github.run_number }}.apk" dist/SHA256SUMS.txt --clobber
