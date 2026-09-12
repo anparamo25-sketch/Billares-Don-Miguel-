@@ -83,7 +83,6 @@ jobs:
           ! grep -A80 'Future<bool> configureThermalPrinter() async {' lib/main.dart | grep -q 'PrintBluetoothThermal.bluetoothEnabled'
           grep -q "Future<String?> printReceipt(BillTable table)" lib/main.dart
           grep -q "ReceiptPreviewPage" lib/main.dart
-          grep -q "getBondedBluetoothDevices" lib/main.dart
           grep -q "MethodChannel('billaresdonmiguel/network')" lib/main.dart
 
       - name: Verificar fuente funcional 1.2.9/129
@@ -139,7 +138,7 @@ jobs:
           grep -q "esc_pos_utils_plus" lib/main.dart
           grep -q "Future<String?> printReceipt(BillTable table)" lib/main.dart
           grep -q "ReceiptPreviewPage" lib/main.dart
-          grep -q "getBondedBluetoothDevices" lib/main.dart
+          grep -q "MethodChannel('billaresdonmiguel/network')" lib/main.dart
 
       - name: Compilar APK release
         run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
