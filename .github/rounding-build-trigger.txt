@@ -1,0 +1,1 @@
+Trigger de compilacion para validar el cambio permanente de redondeo del total final.
