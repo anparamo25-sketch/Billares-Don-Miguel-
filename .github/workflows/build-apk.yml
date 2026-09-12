@@ -131,8 +131,10 @@ jobs:
           test -s "$APK"
           file "$APK"
           sha256sum "$APK" | tee SHA256SUM.txt
+          aapt dump badging "$APK" | grep -q "versionName='${BUILD_NAME}'"
+          aapt dump badging "$APK" | grep -q "versionCode='${BUILD_NUMBER}'"
 
-      - name: Publish APK
+      - name: Publish APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: Billares-Don-Miguel-APK-v1.2.9-build129
@@ -141,3 +143,14 @@ jobs:
             SHA256SUM.txt
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish direct GitHub Release APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v${BUILD_NAME}-build${BUILD_NUMBER}"
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Billares Don Miguel v${BUILD_NAME} (build ${BUILD_NUMBER})" --notes "APK release directa de Billares Don Miguel ${BUILD_NAME}+${BUILD_NUMBER}."
+          gh release upload "$TAG" "$APK#Billares-Don-Miguel-v${BUILD_NAME}-build${BUILD_NUMBER}.apk" SHA256SUM.txt --clobber
