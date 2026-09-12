@@ -37,12 +37,11 @@ Future<String?> _billaresLocalIp() async {
     );
     for (final network in interfaces) {
       for (final address in network.addresses) {
-        final parts =
-            address.address
-                .split('.')
-                .map(int.tryParse)
-                .whereType<int>()
-                .toList();
+        final parts = address.address
+            .split('.')
+            .map(int.tryParse)
+            .whereType<int>()
+            .toList();
         final privateIpv4 =
             parts.length == 4 &&
             (parts[0] == 10 ||
@@ -141,9 +140,8 @@ Future<void> _startBillaresMdns() async {
       }
     });
     try {
-      await const MethodChannel(
-        'billaresdonmiguel/network',
-      ).invokeMethod<void>('acquireMulticastLock');
+      await const MethodChannel('billaresdonmiguel/network')
+          .invokeMethod<void>('acquireMulticastLock');
     } catch (_) {}
   } catch (_) {}
 }
@@ -191,8 +189,9 @@ class BillTable {
       (TableStatus value) => value.name == statusName,
       orElse: () => TableStatus.available,
     );
-    start =
-        map['start'] == null ? null : DateTime.tryParse(map['start'] as String);
+    start = map['start'] == null
+        ? null
+        : DateTime.tryParse(map['start'] as String);
     end = map['end'] == null ? null : DateTime.tryParse(map['end'] as String);
     amount = (map['amount'] as num?)?.toDouble() ?? 0;
   }
@@ -294,9 +293,8 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> login() async {
     if (controller.text != password) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Contraseña incorrecta')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Contraseña incorrecta')));
       controller.clear();
       return;
     }
@@ -325,65 +323,64 @@ class _LoginPageState extends State<LoginPage> {
             color: const Color(0xff151515),
             child: Padding(
               padding: const EdgeInsets.all(28),
-              child:
-                  loading
-                      ? const SizedBox(
-                        height: 180,
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                      : Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          const Icon(
-                            Icons.sports_bar,
-                            size: 64,
-                            color: Colors.green,
+              child: loading
+                  ? const SizedBox(
+                      height: 180,
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        const Icon(
+                          Icons.sports_bar,
+                          size: 64,
+                          color: Colors.green,
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Billares Don Miguel',
+                          style: TextStyle(
+                            fontSize: 27,
+                            fontWeight: FontWeight.bold,
                           ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'Billares Don Miguel',
-                            style: TextStyle(
-                              fontSize: 27,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          const Text('CENTRAL • Administrador'),
-                          const SizedBox(height: 28),
-                          TextField(
-                            controller: controller,
-                            obscureText: obscure,
-                            onSubmitted: (_) => login(),
-                            decoration: InputDecoration(
-                              labelText: 'Contraseña',
-                              prefixIcon: const Icon(Icons.lock_outline),
-                              suffixIcon: IconButton(
-                                tooltip: obscure ? 'Mostrar' : 'Ocultar',
-                                onPressed:
-                                    () => setState(() => obscure = !obscure),
-                                icon: Icon(
-                                  obscure
-                                      ? Icons.visibility_outlined
-                                      : Icons.visibility_off_outlined,
-                                ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text('CENTRAL • Administrador'),
+                        const SizedBox(height: 28),
+                        TextField(
+                          controller: controller,
+                          obscureText: obscure,
+                          onSubmitted: (_) => login(),
+                          decoration: InputDecoration(
+                            labelText: 'Contraseña',
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            suffixIcon: IconButton(
+                              tooltip: obscure ? 'Mostrar' : 'Ocultar',
+                              onPressed: () =>
+                                  setState(() => obscure = !obscure),
+                              icon: Icon(
+                                obscure
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
                               ),
-                              border: const OutlineInputBorder(),
                             ),
+                            border: const OutlineInputBorder(),
                           ),
-                          const SizedBox(height: 20),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 50,
-                            child: FilledButton.icon(
-                              onPressed: login,
-                              icon: const Icon(Icons.login),
-                              label: const Text('Ingresar'),
-                            ),
+                        ),
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: FilledButton.icon(
+                            onPressed: login,
+                            icon: const Icon(Icons.login),
+                            label: const Text('Ingresar'),
                           ),
-                          const SizedBox(height: 14),
-                          Text('Versión $appVersion'),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(height: 14),
+                        Text('Versión $appVersion'),
+                      ],
+                    ),
             ),
           ),
         ),
@@ -401,10 +398,9 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage>
     with WidgetsBindingObserver {
-  final List<BillTable> tableList =
-      tableRates.entries
-          .map((MapEntry<int, double> e) => BillTable(e.key, e.value))
-          .toList();
+  final List<BillTable> tableList = tableRates.entries
+      .map((MapEntry<int, double> e) => BillTable(e.key, e.value))
+      .toList();
   final TextEditingController newPassword = TextEditingController();
   final TextEditingController confirmPassword = TextEditingController();
   List<HistoryEntry> history = <HistoryEntry>[];
@@ -436,8 +432,9 @@ class _DashboardPageState extends State<DashboardPage>
                 'status': t.status.name,
                 'start': t.start?.toIso8601String(),
                 'end': t.end?.toIso8601String(),
-                'amount':
-                    t.status == TableStatus.playing ? t.liveAmount : t.amount,
+                'amount': t.status == TableStatus.playing
+                    ? t.liveAmount
+                    : t.amount,
                 'rate': t.rate,
               },
             )
@@ -502,15 +499,13 @@ class _DashboardPageState extends State<DashboardPage>
     if (rawHistory != null && rawHistory.isNotEmpty) {
       try {
         final List<dynamic> data = jsonDecode(rawHistory) as List<dynamic>;
-        history =
-            data
-                .map(
-                  (dynamic item) => HistoryEntry.fromMap(
-                    Map<String, dynamic>.from(item as Map),
-                  ),
-                )
-                .where((HistoryEntry e) => e.end.isAfter(cutoff))
-                .toList();
+        history = data
+            .map(
+              (dynamic item) =>
+                  HistoryEntry.fromMap(Map<String, dynamic>.from(item as Map)),
+            )
+            .where((HistoryEntry e) => e.end.isAfter(cutoff))
+            .toList();
       } catch (_) {
         history = <HistoryEntry>[];
       }
@@ -589,46 +584,41 @@ class _DashboardPageState extends State<DashboardPage>
     final double generated = workdayGenerated;
     final bool? confirmed = await showDialog<bool>(
       context: context,
-      builder:
-          (BuildContext context) => AlertDialog(
-            title: const Text('Cerrar día'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text('Juegos: $workdayGames'),
-                Text('Total generado: ${money(generated)}'),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: cashController,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Efectivo físico al cierre',
-                    prefixText: 'C\$ ',
-                  ),
-                ),
-              ],
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Cerrar día'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('Juegos: $workdayGames'),
+            Text('Total generado: ${money(generated)}'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: cashController,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'Efectivo físico al cierre',
+                prefixText: 'C\$ ',
+              ),
             ),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancelar'),
-              ),
-              FilledButton(
-                onPressed:
-                    () => Navigator.pop(
-                      context,
-                      double.tryParse(
-                            cashController.text.replaceAll(',', '.'),
-                          ) !=
-                          null,
-                    ),
-                child: const Text('Registrar cierre'),
-              ),
-            ],
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
           ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              context,
+              double.tryParse(cashController.text.replaceAll(',', '.')) != null,
+            ),
+            child: const Text('Registrar cierre'),
+          ),
+        ],
+      ),
     );
     final double? cash = double.tryParse(
       cashController.text.replaceAll(',', '.'),
@@ -742,61 +732,57 @@ class _DashboardPageState extends State<DashboardPage>
 
   Future<void> showTvConnection() async {
     final int port = lanPort ?? 80;
-    final String url =
-        port == 80
-            ? 'http://billaresdonmiguel.local/tv'
-            : 'http://billaresdonmiguel.local:$port/tv';
+    final String url = port == 80
+        ? 'http://billaresdonmiguel.local/tv'
+        : 'http://billaresdonmiguel.local:$port/tv';
     if (!mounted) return;
     await showDialog<void>(
       context: context,
-      builder:
-          (dialogContext) => AlertDialog(
-            title: const Text('Pantalla exclusiva para TV'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  const Text(
-                    'La TV mostrará solamente las mesas. La administración continúa funcionando de forma independiente.',
-                  ),
-                  const SizedBox(height: 12),
-                  SelectableText(
-                    url,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  FilledButton.icon(
-                    onPressed: () async {
-                      await Clipboard.setData(ClipboardData(text: url));
-                      if (dialogContext.mounted)
-                        ScaffoldMessenger.of(dialogContext).showSnackBar(
-                          const SnackBar(
-                            content: Text('Dirección de TV copiada'),
-                          ),
-                        );
-                    },
-                    icon: const Icon(Icons.copy),
-                    label: const Text('Copiar dirección'),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Para la pantalla exclusiva utiliza esta dirección en el navegador de la TV. No uses Duplicar pantalla/Miracast.',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ],
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Pantalla exclusiva para TV'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text(
+                'La TV mostrará solamente las mesas. La administración continúa funcionando de forma independiente.',
               ),
-            ),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Cerrar'),
+              const SizedBox(height: 12),
+              SelectableText(
+                url,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: url));
+                  if (dialogContext.mounted)
+                    ScaffoldMessenger.of(dialogContext).showSnackBar(
+                      const SnackBar(content: Text('Dirección de TV copiada')),
+                    );
+                },
+                icon: const Icon(Icons.copy),
+                label: const Text('Copiar dirección'),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Para la pantalla exclusiva utiliza esta dirección en el navegador de la TV. No uses Duplicar pantalla/Miracast.',
+                style: TextStyle(fontSize: 12),
               ),
             ],
           ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -810,25 +796,23 @@ class _DashboardPageState extends State<DashboardPage>
     'app': 'Billares Don Miguel',
     'version': appVersion,
     'time': clock(DateTime.now()),
-    'tables':
-        tableList
-            .map(
-              (BillTable t) => <String, dynamic>{
-                'number': t.number,
-                'rate': t.rate,
-                'status': t.statusText,
-                'start': t.start == null ? null : t.start!.toIso8601String(),
-                'end': t.end == null ? null : t.end!.toIso8601String(),
-                'elapsed': duration(t.elapsedSeconds),
-                'amount':
-                    t.status == TableStatus.available
-                        ? 0
-                        : t.status == TableStatus.playing
-                        ? t.liveAmount
-                        : t.amount,
-              },
-            )
-            .toList(),
+    'tables': tableList
+        .map(
+          (BillTable t) => <String, dynamic>{
+            'number': t.number,
+            'rate': t.rate,
+            'status': t.statusText,
+            'start': t.start == null ? null : t.start!.toIso8601String(),
+            'end': t.end == null ? null : t.end!.toIso8601String(),
+            'elapsed': duration(t.elapsedSeconds),
+            'amount': t.status == TableStatus.available
+                ? 0
+                : t.status == TableStatus.playing
+                ? t.liveAmount
+                : t.amount,
+          },
+        )
+        .toList(),
   };
 
   Future<void> startGame(BillTable table) async {
@@ -859,9 +843,8 @@ class _DashboardPageState extends State<DashboardPage>
     } catch (_) {}
     try {
       final List<dynamic> native =
-          await const MethodChannel(
-            'billaresdonmiguel/network',
-          ).invokeMethod<List<dynamic>>('getBondedBluetoothDevices') ??
+          await const MethodChannel('billaresdonmiguel/network')
+              .invokeMethod<List<dynamic>>('getBondedBluetoothDevices') ??
           <dynamic>[];
       return native
           .map((dynamic item) {
@@ -889,19 +872,18 @@ class _DashboardPageState extends State<DashboardPage>
         if (mounted) {
           await showDialog<void>(
             context: context,
-            builder:
-                (BuildContext dialogContext) => AlertDialog(
-                  title: const Text('Sin impresoras emparejadas'),
-                  content: const Text(
-                    'Primero empareja la impresora térmica desde Ajustes > Bluetooth de Android. Después vuelve aquí para seleccionarla.',
-                  ),
-                  actions: <Widget>[
-                    FilledButton(
-                      onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text('Entendido'),
-                    ),
-                  ],
+            builder: (BuildContext dialogContext) => AlertDialog(
+              title: const Text('Sin impresoras emparejadas'),
+              content: const Text(
+                'Primero empareja la impresora térmica desde Ajustes > Bluetooth de Android. Después vuelve aquí para seleccionarla.',
+              ),
+              actions: <Widget>[
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Entendido'),
                 ),
+              ],
+            ),
           );
         }
         return false;
@@ -909,54 +891,43 @@ class _DashboardPageState extends State<DashboardPage>
       final String? savedMac = prefs.getString('thermal_printer_mac');
       final String? selectedMac = await showDialog<String>(
         context: context,
-        builder:
-            (BuildContext dialogContext) => AlertDialog(
-              title: const Text('Impresora térmica'),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: ListView(
-                  shrinkWrap: true,
-                  children:
-                      printers.map((BluetoothInfo printer) {
-                        final bool selected = printer.macAdress == savedMac;
-                        return ListTile(
-                          leading: Icon(
-                            selected
-                                ? Icons.check_circle
-                                : Icons.print_outlined,
-                          ),
-                          title: Text(
-                            printer.name.isEmpty
-                                ? 'Impresora térmica'
-                                : printer.name,
-                          ),
-                          subtitle: Text(printer.macAdress),
-                          onTap:
-                              () => Navigator.pop(
-                                dialogContext,
-                                printer.macAdress,
-                              ),
-                        );
-                      }).toList(),
-                ),
-              ),
-              actions: <Widget>[
-                if (savedMac != null)
-                  TextButton(
-                    onPressed: () async {
-                      await prefs.remove('thermal_printer_mac');
-                      await prefs.remove('thermal_printer_name');
-                      if (dialogContext.mounted)
-                        Navigator.pop(dialogContext, '');
-                    },
-                    child: const Text('Quitar impresora'),
+        builder: (BuildContext dialogContext) => AlertDialog(
+          title: const Text('Impresora térmica'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView(
+              shrinkWrap: true,
+              children: printers.map((BluetoothInfo printer) {
+                final bool selected = printer.macAdress == savedMac;
+                return ListTile(
+                  leading: Icon(
+                    selected ? Icons.check_circle : Icons.print_outlined,
                   ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Cerrar'),
-                ),
-              ],
+                  title: Text(
+                    printer.name.isEmpty ? 'Impresora térmica' : printer.name,
+                  ),
+                  subtitle: Text(printer.macAdress),
+                  onTap: () => Navigator.pop(dialogContext, printer.macAdress),
+                );
+              }).toList(),
             ),
+          ),
+          actions: <Widget>[
+            if (savedMac != null)
+              TextButton(
+                onPressed: () async {
+                  await prefs.remove('thermal_printer_mac');
+                  await prefs.remove('thermal_printer_name');
+                  if (dialogContext.mounted) Navigator.pop(dialogContext, '');
+                },
+                child: const Text('Quitar impresora'),
+              ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        ),
       );
       if (selectedMac == null) return savedMac != null;
       if (selectedMac.isEmpty) return false;
@@ -1069,18 +1040,15 @@ class _DashboardPageState extends State<DashboardPage>
     }
     final bool? printed = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
-        builder:
-            (_) => ReceiptPreviewPage(
-              tableNumber: table.number,
-              startText: clock(table.start!),
-              endText: clock(table.end!),
-              durationText: duration(
-                table.end!.difference(table.start!).inSeconds,
-              ),
-              rateText: '${money(table.rate)} / hora',
-              amountText: money(table.amount),
-              onPrint: () async => printReceipt(table),
-            ),
+        builder: (_) => ReceiptPreviewPage(
+          tableNumber: table.number,
+          startText: clock(table.start!),
+          endText: clock(table.end!),
+          durationText: duration(table.end!.difference(table.start!).inSeconds),
+          rateText: '${money(table.rate)} / hora',
+          amountText: money(table.amount),
+          onPrint: () async => printReceipt(table),
+        ),
       ),
     );
     if (printed != true || !mounted) return;
@@ -1130,9 +1098,9 @@ class _DashboardPageState extends State<DashboardPage>
       final HttpClientResponse response = await request.close();
       if (response.statusCode != 200)
         throw const HttpException('Manifest no disponible');
-      final Map<String, dynamic> manifest =
-          jsonDecode(await response.transform(utf8.decoder).join())
-              as Map<String, dynamic>;
+      final Map<String, dynamic> manifest = jsonDecode(
+        await response.transform(utf8.decoder).join(),
+      ) as Map<String, dynamic>;
       final String latestVersion = manifest['version'] as String? ?? appVersion;
       final String? downloadUrl =
           (manifest['downloadUrl'] ?? manifest['apk_url']) as String?;
@@ -1148,23 +1116,22 @@ class _DashboardPageState extends State<DashboardPage>
       if (!mounted) return;
       final bool? install = await showDialog<bool>(
         context: context,
-        builder:
-            (BuildContext context) => AlertDialog(
-              title: const Text('Nueva actualización disponible'),
-              content: Text(
-                'Hay una nueva versión ($latestVersion). ¿Deseas actualizar ahora?',
-              ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Más tarde'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Actualizar ahora'),
-                ),
-              ],
+        builder: (BuildContext context) => AlertDialog(
+          title: const Text('Nueva actualización disponible'),
+          content: Text(
+            'Hay una nueva versión ($latestVersion). ¿Deseas actualizar ahora?',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Más tarde'),
             ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Actualizar ahora'),
+            ),
+          ],
+        ),
       );
       if (install == true) await downloadAndInstall(downloadUrl);
     } catch (_) {
@@ -1189,8 +1156,8 @@ class _DashboardPageState extends State<DashboardPage>
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Preparando actualización...')),
       );
-      final bool installPermission =
-          await ApkInstall().onCheckInstallApkPermission();
+      final bool installPermission = await ApkInstall()
+          .onCheckInstallApkPermission();
       if (!installPermission) {
         if (mounted)
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1248,45 +1215,41 @@ class _DashboardPageState extends State<DashboardPage>
     confirmPassword.clear();
     final bool? saved = await showDialog<bool>(
       context: context,
-      builder:
-          (BuildContext context) => AlertDialog(
-            title: const Text('Cambiar contraseña'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                TextField(
-                  controller: newPassword,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Nueva contraseña',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: confirmPassword,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirmar contraseña',
-                  ),
-                ),
-              ],
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Cambiar contraseña'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            TextField(
+              controller: newPassword,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Nueva contraseña'),
             ),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancelar'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: confirmPassword,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Confirmar contraseña',
               ),
-              FilledButton(
-                onPressed:
-                    () => Navigator.pop(
-                      context,
-                      newPassword.text.isNotEmpty &&
-                          newPassword.text == confirmPassword.text,
-                    ),
-                child: const Text('Guardar'),
-              ),
-            ],
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
           ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              context,
+              newPassword.text.isNotEmpty &&
+                  newPassword.text == confirmPassword.text,
+            ),
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
     );
     if (saved == true) {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -1368,20 +1331,20 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   Widget tableCard(BillTable table) {
-    final double amount =
-        table.status == TableStatus.playing ? table.liveAmount : table.amount;
-    final String buttonText =
-        table.status == TableStatus.available
-            ? 'Iniciar juego'
-            : table.status == TableStatus.playing
-            ? 'Finalizar juego'
-            : 'Cobrar';
+    final double amount = table.status == TableStatus.playing
+        ? table.liveAmount
+        : table.amount;
+    final String buttonText = table.status == TableStatus.available
+        ? 'Iniciar juego'
+        : table.status == TableStatus.playing
+        ? 'Finalizar juego'
+        : 'Cobrar';
     final Future<void> Function()? action =
         table.status == TableStatus.available
-            ? (workdayActive ? () => startGame(table) : null)
-            : table.status == TableStatus.playing
-            ? () => finishGame(table)
-            : () => collect(table);
+        ? (workdayActive ? () => startGame(table) : null)
+        : table.status == TableStatus.playing
+        ? () => finishGame(table)
+        : () => collect(table);
     return Card(
       elevation: 4,
       color: statusColor(table.status),
@@ -1508,12 +1471,11 @@ class _DashboardPageState extends State<DashboardPage>
   Widget dashboard() => LayoutBuilder(
     builder: (BuildContext context, BoxConstraints constraints) {
       final double width = constraints.maxWidth;
-      final int columns =
-          width >= 1100
-              ? 3
-              : width >= 650
-              ? 2
-              : 1;
+      final int columns = width >= 1100
+          ? 3
+          : width >= 650
+          ? 2
+          : 1;
       final bool compact = width < 650;
       Widget metricCard(String title, String value, IconData icon) {
         return Card(
@@ -1632,12 +1594,11 @@ class _DashboardPageState extends State<DashboardPage>
               physics: const NeverScrollableScrollPhysics(),
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
-              childAspectRatio:
-                  width >= 1100
-                      ? 2.35
-                      : width >= 650
-                      ? 2.7
-                      : 3.1,
+              childAspectRatio: width >= 1100
+                  ? 2.35
+                  : width >= 650
+                  ? 2.7
+                  : 3.1,
               children: <Widget>[
                 metricCard(
                   'Generado hoy',
@@ -1680,10 +1641,9 @@ class _DashboardPageState extends State<DashboardPage>
                                   ? 'ABIERTA • ${clock(workdayOpenedAt ?? DateTime.now())}'
                                   : 'CERRADA',
                               style: TextStyle(
-                                color:
-                                    workdayActive
-                                        ? Colors.green
-                                        : Colors.orange,
+                                color: workdayActive
+                                    ? Colors.green
+                                    : Colors.orange,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -1738,9 +1698,8 @@ class _DashboardPageState extends State<DashboardPage>
                 Expanded(
                   child: Text(
                     'Estado de las mesas',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: Theme.of(context).textTheme.titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w800),
                   ),
                 ),
                 if (!compact)
@@ -1765,12 +1724,11 @@ class _DashboardPageState extends State<DashboardPage>
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: columns,
-                mainAxisExtent:
-                    width >= 1100
-                        ? 350
-                        : width >= 650
-                        ? 365
-                        : 390,
+                mainAxisExtent: width >= 1100
+                    ? 350
+                    : width >= 650
+                    ? 365
+                    : 390,
                 crossAxisSpacing: 14,
                 mainAxisSpacing: 14,
               ),
@@ -1791,8 +1749,8 @@ class _DashboardPageState extends State<DashboardPage>
           '${entry.workDate.year}-${entry.workDate.month.toString().padLeft(2, '0')}-${entry.workDate.day.toString().padLeft(2, '0')}';
       groups.putIfAbsent(key, () => <HistoryEntry>[]).add(entry);
     }
-    final List<String> keys =
-        groups.keys.toList()..sort((String a, String b) => b.compareTo(a));
+    final List<String> keys = groups.keys.toList()
+      ..sort((String a, String b) => b.compareTo(a));
     return ListView(
       padding: const EdgeInsets.all(16),
       children: <Widget>[
@@ -1817,10 +1775,8 @@ class _DashboardPageState extends State<DashboardPage>
             ),
           ),
         ...keys.map((String key) {
-          final List<HistoryEntry> items =
-              groups[key]!..sort(
-                (HistoryEntry a, HistoryEntry b) => b.end.compareTo(a.end),
-              );
+          final List<HistoryEntry> items = groups[key]!
+            ..sort((HistoryEntry a, HistoryEntry b) => b.end.compareTo(a.end));
           final HistoryEntry first = items.last;
           final HistoryEntry last = items.first;
           final double total = items.fold<double>(
@@ -1883,59 +1839,58 @@ class _DashboardPageState extends State<DashboardPage>
   void showSettings() {
     showDialog<void>(
       context: context,
-      builder:
-          (BuildContext context) => AlertDialog(
-            title: const Text('Configuración'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  const Text(
-                    'Tarifas fijas',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text('Mesas 1 y 2: C\$120 por hora'),
-                  const Text('Mesas 3 y 4: C\$100 por hora'),
-                  const Text('Mesa 5: C\$70 por hora'),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Las tarifas no pueden modificarse desde el administrador.',
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      Navigator.pop(context);
-                      await configureThermalPrinter();
-                    },
-                    icon: const Icon(Icons.print_outlined),
-                    label: const Text('Impresora térmica'),
-                  ),
-                  const SizedBox(height: 16),
-                  if (lanIp != null) Text('Receptor TV: http://$lanIp:8080/tv'),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'La TV muestra únicamente la pantalla de mesas; el panel administrativo permanece en el celular.',
-                  ),
-                ],
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Configuración'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text(
+                'Tarifas fijas',
+                style: TextStyle(fontWeight: FontWeight.bold),
               ),
-            ),
-            actions: <Widget>[
-              TextButton(
-                onPressed: changePassword,
-                child: const Text('Cambiar contraseña'),
+              const SizedBox(height: 8),
+              const Text('Mesas 1 y 2: C\$120 por hora'),
+              const Text('Mesas 3 y 4: C\$100 por hora'),
+              const Text('Mesa 5: C\$70 por hora'),
+              const SizedBox(height: 12),
+              const Text(
+                'Las tarifas no pueden modificarse desde el administrador.',
               ),
-              TextButton(
-                onPressed: () => checkForUpdate(),
-                child: const Text('Buscar actualización'),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await configureThermalPrinter();
+                },
+                icon: const Icon(Icons.print_outlined),
+                label: const Text('Impresora térmica'),
               ),
-              FilledButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Cerrar'),
+              const SizedBox(height: 16),
+              if (lanIp != null) Text('Receptor TV: http://$lanIp:8080/tv'),
+              const SizedBox(height: 8),
+              const Text(
+                'La TV muestra únicamente la pantalla de mesas; el panel administrativo permanece en el celular.',
               ),
             ],
           ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: changePassword,
+            child: const Text('Cambiar contraseña'),
+          ),
+          TextButton(
+            onPressed: () => checkForUpdate(),
+            child: const Text('Buscar actualización'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2014,30 +1969,19 @@ class _DashboardPageState extends State<DashboardPage>
   }
 
   Widget workdayView() {
-    final String opened =
-        workdayOpenedAt == null
-            ? '—'
-            : workdayOpenedAt!
-                .toString()
-                .replaceFirst('T', ' ')
-                .split('.')
-                .first;
-    final String closed =
-        workdayClosedAt == null
-            ? '—'
-            : workdayClosedAt!
-                .toString()
-                .replaceFirst('T', ' ')
-                .split('.')
-                .first;
+    final String opened = workdayOpenedAt == null
+        ? '—'
+        : workdayOpenedAt!.toString().replaceFirst('T', ' ').split('.').first;
+    final String closed = workdayClosedAt == null
+        ? '—'
+        : workdayClosedAt!.toString().replaceFirst('T', ' ').split('.').first;
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        final int columns =
-            constraints.maxWidth >= 900
-                ? 4
-                : constraints.maxWidth >= 600
-                ? 2
-                : 1;
+        final int columns = constraints.maxWidth >= 900
+            ? 4
+            : constraints.maxWidth >= 600
+            ? 2
+            : 1;
         return SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -2068,10 +2012,9 @@ class _DashboardPageState extends State<DashboardPage>
                             Text(
                               workdayActive ? 'ABIERTA' : 'CERRADA',
                               style: TextStyle(
-                                color:
-                                    workdayActive
-                                        ? Colors.green
-                                        : Colors.orange,
+                                color: workdayActive
+                                    ? Colors.green
+                                    : Colors.orange,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
