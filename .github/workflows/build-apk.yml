@@ -113,22 +113,51 @@ jobs:
           from pathlib import Path
           p = Path('lib/main.dart')
           s = p.read_text()
-          old = """      if (!await PrintBluetoothThermal.bluetoothEnabled) return false;\n      if (!await PrintBluetoothThermal.isPermissionBluetoothGranted)\n        return false;\n      final List<BluetoothInfo> printers =\n          await PrintBluetoothThermal.pairedBluetooths;\n      if (printers.isEmpty) return false;\n"""
-          new = """      if (!await PrintBluetoothThermal.bluetoothEnabled) {\n        if (mounted) {\n          await showDialog<void>(\n            context: context,\n            builder: (BuildContext dialogContext) => AlertDialog(\n              title: const Text('Bluetooth desactivado'),\n              content: const Text(\n                'Activa Bluetooth en la tablet y vuelve a pulsar Configurar impresora térmica.',\n              ),\n              actions: <Widget>[\n                FilledButton(\n                  onPressed: () => Navigator.pop(dialogContext),\n                  child: const Text('Cerrar'),\n                ),\n              ],\n            ),\n          );\n        }\n        return false;\n      }\n      final List<BluetoothInfo> printers =\n          await PrintBluetoothThermal.pairedBluetooths;\n      if (printers.isEmpty) {\n        if (mounted) {\n          await showDialog<void>(\n            context: context,\n            builder: (BuildContext dialogContext) => AlertDialog(\n              title: const Text('Sin impresoras emparejadas'),\n              content: const Text(\n                'Primero empareja la impresora térmica desde Ajustes > Bluetooth de Android. Después vuelve aquí para seleccionarla.',\n              ),\n              actions: <Widget>[\n                FilledButton(\n                  onPressed: () => Navigator.pop(dialogContext),\n                  child: const Text('Entendido'),\n                ),\n              ],\n            ),\n          );\n        }\n        return false;\n      }\n"""
-          if old in s:
-              p.write_text(s.replace(old, new, 1))
+          old = """      if (!await PrintBluetoothThermal.bluetoothEnabled) {
+        if (mounted) {
+          await showDialog<void>(
+            context: context,
+            builder:
+                (BuildContext dialogContext) => AlertDialog(
+                  title: const Text('Bluetooth desactivado'),
+                  content: const Text(
+                    'Activa Bluetooth en la tablet y vuelve a pulsar Configurar impresora térmica.',
+                  ),
+                  actions: <Widget>[
+                    FilledButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: const Text('Cerrar'),
+                    ),
+                  ],
+                ),
+          );
+        }
+        return false;
+      }
+      final List<BluetoothInfo> printers =
+          await PrintBluetoothThermal.pairedBluetooths;
+"""
+          new = """      final List<BluetoothInfo> printers =
+          await PrintBluetoothThermal.pairedBluetooths;
+"""
+          if old not in s:
+              raise SystemExit('ERROR: no se encontro el bloqueo Bluetooth incorrecto en configureThermalPrinter.')
+          p.write_text(s.replace(old, new, 1))
           PY
           dart format lib/main.dart
           git diff --check
-          if git diff --quiet -- lib/main.dart; then
-            echo 'La correccion de impresora ya estaba aplicada.'
-          else
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add lib/main.dart
-            git commit -m 'fix: thermal printer configuration flow'
-            git push
-          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('lib/main.dart').read_text()
+          start = s.index('Future<bool> configureThermalPrinter() async {')
+          end = s.index('Future<String?> printReceipt', start)
+          block = s[start:end]
+          if 'PrintBluetoothThermal.bluetoothEnabled' in block:
+              raise SystemExit('ERROR: configureThermalPrinter todavía contiene bluetoothEnabled.')
+          if 'PrintBluetoothThermal.pairedBluetooths' not in block:
+              raise SystemExit('ERROR: configureThermalPrinter no consulta pairedBluetooths.')
+          print('CONFIGURE_THERMAL_PRINTER_BLUETOOTH_CHECK=FIXED')
+          PY
 
       - name: Verificar fuente permanente
         run: |
