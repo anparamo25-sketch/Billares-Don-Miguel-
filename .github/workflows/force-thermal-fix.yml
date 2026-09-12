@@ -1,0 +1,69 @@
+name: Force thermal printer source fix
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Remove false Bluetooth state gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/main.dart')
+          s = p.read_text()
+          old = """      if (!await PrintBluetoothThermal.bluetoothEnabled) {
+        if (mounted) {
+          await showDialog<void>(
+            context: context,
+            builder:
+                (BuildContext dialogContext) => AlertDialog(
+                  title: const Text('Bluetooth desactivado'),
+                  content: const Text(
+                    'Activa Bluetooth en la tablet y vuelve a pulsar Configurar impresora térmica.',
+                  ),
+                  actions: <Widget>[
+                    FilledButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: const Text('Cerrar'),
+                    ),
+                  ],
+                ),
+          );
+        }
+        return false;
+      }
+      final List<BluetoothInfo> printers =
+          await PrintBluetoothThermal.pairedBluetooths;
+"""
+          new = """      final List<BluetoothInfo> printers =
+          await PrintBluetoothThermal.pairedBluetooths;
+"""
+          if old not in s:
+              raise SystemExit('No se encontró el bloqueo Bluetooth incorrecto en configureThermalPrinter.')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          dart format lib/main.dart
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('lib/main.dart').read_text()
+          start = s.index('Future<bool> configureThermalPrinter() async {')
+          end = s.index('Future<String?> printReceipt', start)
+          block = s[start:end]
+          assert 'PrintBluetoothThermal.bluetoothEnabled' not in block
+          assert 'PrintBluetoothThermal.pairedBluetooths' in block
+          print('THERMAL_PRINTER_SOURCE_FIX=OK')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/main.dart
+          git commit -m 'fix: remove false Bluetooth state gate from thermal printer configuration'
+          git push
