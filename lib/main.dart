@@ -852,12 +852,39 @@ class _DashboardPageState extends State<DashboardPage>
     await saveTables();
   }
 
+  Future<List<BluetoothInfo>> loadThermalPrinters() async {
+    try {
+      final List<BluetoothInfo> printers = await loadThermalPrinters();
+      if (printers.isNotEmpty) return printers;
+    } catch (_) {}
+    try {
+      final List<dynamic> native =
+          await const MethodChannel(
+            'billaresdonmiguel/network',
+          ).invokeMethod<List<dynamic>>('getBondedBluetoothDevices') ??
+          <dynamic>[];
+      return native
+          .map((dynamic item) {
+            final Map<dynamic, dynamic> data = Map<dynamic, dynamic>.from(
+              item as Map,
+            );
+            return BluetoothInfo(
+              name: (data['name'] as String?) ?? '',
+              macAdress: (data['macAdress'] as String?) ?? '',
+            );
+          })
+          .where((BluetoothInfo item) => item.macAdress.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return <BluetoothInfo>[];
+    }
+  }
+
   Future<bool> configureThermalPrinter() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     if (!mounted) return false;
     try {
-      final List<BluetoothInfo> printers =
-          await PrintBluetoothThermal.pairedBluetooths;
+      final List<BluetoothInfo> printers = await loadThermalPrinters();
       if (printers.isEmpty) {
         if (mounted) {
           await showDialog<void>(
@@ -954,8 +981,7 @@ class _DashboardPageState extends State<DashboardPage>
       // isPermissionBluetoothGranted como bloqueo previo porque ese estado puede
       // devolver false aunque el adaptador ya este encendido, provocando el falso
       // mensaje "Activa Bluetooth en la tablet" en Cobrar > Imprimir.
-      final List<BluetoothInfo> printers =
-          await PrintBluetoothThermal.pairedBluetooths;
+      final List<BluetoothInfo> printers = await loadThermalPrinters();
       if (printers.isEmpty) {
         return 'No hay impresoras Bluetooth emparejadas con la tablet. Verifica el emparejamiento en Ajustes > Bluetooth.';
       }
