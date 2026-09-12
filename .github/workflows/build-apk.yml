@@ -12,8 +12,8 @@ permissions:
 
 env:
   FLUTTER_VERSION: 3.47.3
-  BUILD_NAME: 1.3.0
-  BUILD_NUMBER: 130
+  BUILD_NAME: 1.2.9
+  BUILD_NUMBER: 129
   MIN_SDK: 23
   COMPILE_SDK: 36
   NDK_VERSION: 28.2.13676358
@@ -81,10 +81,10 @@ jobs:
           grep -q "'billaresdonmiguel/network'" lib/main.dart
           grep -q "acquireMulticastLock" lib/main.dart
 
-      - name: Verificar fuente funcional 1.3.0/130
+      - name: Verificar fuente funcional 1.2.9/129
         run: |
           set -euo pipefail
-          grep -q "const String appVersion = '1.3.0+130'" lib/main.dart
+          grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
           grep -q "String get tvHtml =>" lib/main.dart
           grep -q "Future<String?> printReceipt(BillTable table)" lib/main.dart
           test -s cloud-tv/public/index.html
@@ -128,7 +128,7 @@ jobs:
           if missing:
               raise SystemExit('Faltan elementos funcionales de TV: ' + ', '.join(missing))
           PY
-          grep -q "const String appVersion = '1.3.0+130'" lib/main.dart
+          grep -q "const String appVersion = '1.2.9+129'" lib/main.dart
           grep -q "package:print_bluetooth_thermal/print_bluetooth_thermal.dart" lib/main.dart
           grep -q "esc_pos_utils_plus" lib/main.dart
           grep -q "Future<String?> printReceipt(BillTable table)" lib/main.dart
@@ -173,8 +173,8 @@ jobs:
           export PATH="${ANDROID_HOME}/build-tools/36.0.0:${ANDROID_HOME}/platform-tools:${PATH}"
           aapt dump badging "$APK" | tee /tmp/apk-badging.txt
           grep -q "package: name='com.billaresdonmiguel.billares_don_miguel'" /tmp/apk-badging.txt
-          grep -q "versionCode='130'" /tmp/apk-badging.txt
-          grep -q "versionName='1.3.0'" /tmp/apk-badging.txt
+          grep -q "versionCode='129'" /tmp/apk-badging.txt
+          grep -q "versionName='1.2.9'" /tmp/apk-badging.txt
           grep -q "uses-permission: name='android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE'" /tmp/apk-badging.txt
           grep -q "application-label:'Billares Don Miguel'" /tmp/apk-badging.txt
           apksigner verify --verbose "$APK"
