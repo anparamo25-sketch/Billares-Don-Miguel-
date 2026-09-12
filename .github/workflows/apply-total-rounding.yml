@@ -29,27 +29,25 @@ jobs:
           new = "table.amount = table.liveAmount.roundToDouble();"
           if text.count(old) != 1:
               raise SystemExit(f'No se encontro exactamente una asignacion final del total: {text.count(old)}')
-          text = text.replace(old, new)
+          text = text.replace(old, new, 1)
 
           marker = "String money(double value) => 'C\\$${value.toStringAsFixed(2)}';"
           helper = "String money(double value) => 'C\\$${value.toStringAsFixed(2)}';\n\n  String totalMoney(double value) => 'C\\$${value.round()}';"
           if text.count(marker) != 1:
               raise SystemExit(f'No se encontro exactamente la funcion money: {text.count(marker)}')
-          text = text.replace(marker, helper)
+          text = text.replace(marker, helper, 1)
 
-          replacements = {
+          targeted = {
+              "amountText: money(table.amount),": "amountText: totalMoney(table.amount),",
               "money(amount),": "totalMoney(amount),",
               "money(table.amount),": "totalMoney(table.amount),",
-              "amountText: money(table.amount),": "amountText: totalMoney(table.amount),",
-              "title: Text('Mesa ${e.table} • ${money(e.amount)}'),": "title: Text('Mesa ${e.table} • ${totalMoney(e.amount)}'),",
+              "money(e.amount)": "totalMoney(e.amount)",
           }
-          for old_value, new_value in replacements.items():
+          for old_value, new_value in targeted.items():
               if old_value not in text:
                   raise SystemExit(f'No se encontro el patron esperado: {old_value}')
               text = text.replace(old_value, new_value)
 
-          # La pantalla TV recibe el total ya redondeado, y aqui evitamos que la
-          # plantilla vuelva a mostrar .00 al formatearlo.
           pattern = r"base64Decode\(\s*'([^']+)'\s*,\s*\)"
           match = re.search(pattern, text, re.S)
           if not match:
@@ -73,6 +71,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add lib/main.dart .github/workflows/apply-total-rounding.yml
+          git add lib/main.dart
+          git rm .github/workflows/apply-total-rounding.yml
           git commit -m "fix: redondear total final a numero entero [rounding-applied]"
           git push
