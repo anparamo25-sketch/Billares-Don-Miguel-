@@ -1,6 +1,6 @@
 name: Billares Don Miguel - Build APK
 
-on:
+"on":
   push:
     branches:
       - main
@@ -76,12 +76,7 @@ jobs:
               if marker not in s:
                   raise SystemExit('ERROR: configureThermalPrinter no existe.')
               s = s.replace(marker, helper + marker, 1)
-          s = s.replace(
-              'final List<BluetoothInfo> printers =\n          await PrintBluetoothThermal.pairedBluetooths;',
-              'final List<BluetoothInfo> printers = await loadThermalPrinters();')
-          s = s.replace(
-              'final List<BluetoothInfo> printers =\n          await loadThermalPrinters();',
-              'final List<BluetoothInfo> printers = await loadThermalPrinters();')
+          s = s.replace('final List<BluetoothInfo> printers =\n          await PrintBluetoothThermal.pairedBluetooths;', 'final List<BluetoothInfo> printers = await loadThermalPrinters();')
           start = s.find('Future<bool> configureThermalPrinter() async {')
           end = s.find('Future<String?> printReceipt', start)
           if start < 0 or end < 0:
@@ -129,23 +124,15 @@ jobs:
           if 'applicationId = "com.billaresdonmiguel.billares_don_miguel"' not in s:
               s = s.replace('defaultConfig {', 'defaultConfig {\n        applicationId = "com.billaresdonmiguel.billares_don_miguel"', 1)
           gradle.write_text(s)
-
           manifest = Path('android/app/src/main/AndroidManifest.xml')
           s = manifest.read_text()
           marker = '<uses-permission android:name="android.permission.INTERNET" />'
           if marker not in s:
-              s = s.replace(
-                  '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
-                  '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'
-                  '    <uses-permission android:name="android.permission.INTERNET" />\n'
-                  '    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n'
-                  '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n'
-                  '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />',
-              )
+              s = s.replace('<manifest xmlns:android="http://schemas.android.com/apk/res/android">', '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />')
           bt = '''    <uses-permission android:name="android.permission.BLUETOOTH" />
-              <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-              <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
-              <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />'''
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />'''
           if 'android.permission.BLUETOOTH_CONNECT' not in s:
               s = s.replace(marker, marker + '\n' + bt)
           if 'android:usesCleartextTraffic=' not in s:
@@ -154,7 +141,6 @@ jobs:
           s = s.replace('<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />\n', '')
           manifest.write_text(s)
           PY
-
           mkdir -p android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel
           cat > android/app/src/main/kotlin/com/billaresdonmiguel/billares_don_miguel/MainActivity.kt <<'KOTLIN'
           package com.billaresdonmiguel.billares_don_miguel
@@ -198,8 +184,7 @@ jobs:
 
             private fun getBondedBluetoothDevices(result: MethodChannel.Result) {
               try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                    checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
                   pendingBluetoothResult = result
                   requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_CONNECT), bluetoothPermissionRequestCode)
                   return
