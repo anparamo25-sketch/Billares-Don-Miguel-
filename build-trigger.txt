@@ -1,1 +1,1 @@
-build 1.2.9 thermal printer discovery
+build 1.2.9 thermal printer discovery - clean workflow
