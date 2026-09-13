@@ -61,9 +61,9 @@ REQUIRED_TV = {
     'tv_stream': '/api/stream',
     'tv_routing': 'location.host',
     'tv_elapsed': 'Tiempo jugado',
-    'tv_end': 'Hora finalizada',
-    'tv_amount': 'MONTO A PAGAR',
-    'tv_logo': 'src="/tv-logo.webp"',
+    'tv_end': 'Finalización:',
+    'tv_amount': 'TOTAL A PAGAR',
+    'tv_logo': 'src="/tv-logo.png"',
     'tv_timer': 'setInterval(function(){if(lastState)render(lastState)},1000);',
 }
 for name, marker in REQUIRED_TV.items():
@@ -77,14 +77,14 @@ for marker in (
     '.green{',
     '.red{',
     '.yellow{',
-    "'Disponible'",
-    "'En juego'",
-    "'Pendiente de cobro'",
+    'En juego',
+    'Pendiente de cobro',
+    'Disponible',
 ):
     if marker not in TV_SOURCE:
         raise SystemExit(f'1.3.0 CONTRACT FAILED: estado visual ausente: {marker}')
 
-if 'Hora finalizada' not in TV_SOURCE:
+if 'Finalización:' not in TV_SOURCE:
     raise SystemExit('1.3.0 CONTRACT FAILED: falta hora de finalización en TV')
 if 'panel externo' in APP_SOURCE.lower() or 'panel externo' in TV_SOURCE.lower():
     raise SystemExit('1.3.0 CONTRACT FAILED: panel externo no permitido')
