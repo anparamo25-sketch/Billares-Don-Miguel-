@@ -1,1 +1,1 @@
-Trigger deployment of the existing cloud-tv change. No application logic changes. This file exists only to trigger the cloud-tv deployment workflow if configured.
+Trigger deployment after definitive TV logo fix and responsive header correction. 2026-09-12T20:10:00-06:00
