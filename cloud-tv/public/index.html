@@ -11,25 +11,25 @@
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#05070b;color:#fff;font-family:Arial,sans-serif}
 .wrap{width:100%;height:100vh;padding:0 10px 7px;display:flex;flex-direction:column;overflow:hidden}
-header{position:relative;height:82px;flex:0 0 82px;padding:5px 9px;background:#fff;border-bottom:3px solid #1557c0;display:flex;align-items:center;justify-content:space-between;overflow:hidden}
-.title{position:relative;z-index:2;flex:0 1 34%;min-width:0;color:#1557c0;font-size:clamp(27px,3.6vw,46px);font-weight:900;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header{position:relative;height:94px;flex:0 0 94px;padding:5px 9px;background:#fff;border-bottom:3px solid #1557c0;display:flex;align-items:center;justify-content:space-between;overflow:hidden}
+.title{position:relative;z-index:2;flex:0 1 34%;min-width:0;color:#1557c0;font-size:clamp(30px,3.9vw,50px);font-weight:900;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .logoWrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:2px 30%;pointer-events:none;overflow:hidden;z-index:1}
 .logoWrap img{display:block;width:auto;height:auto;max-width:min(30vw,280px);max-height:calc(100% - 6px);object-fit:contain;flex:none}
 .liveBox{position:relative;z-index:2;flex:0 1 34%;min-width:0;text-align:right;color:#1557c0;white-space:nowrap}
 .clock{font-size:clamp(20px,2.1vw,29px);font-weight:900;line-height:1.05}
 .live{font-size:clamp(15px,1.7vw,22px);font-weight:900;margin-top:2px}
 .grid{width:100%;flex:1;min-height:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;padding:7px 0 0;overflow:hidden}
-.card{--scale:1;height:100%;min-height:0;min-width:0;border-radius:10px;padding:calc(11px * var(--scale)) calc(9px * var(--scale));border:3px solid #64748b;display:flex;flex-direction:column;box-shadow:0 4px 10px rgba(0,0,0,.28);overflow:hidden}
+.card{--scale:1;height:100%;min-height:0;min-width:0;border-radius:10px;padding:calc(9px * var(--scale)) calc(8px * var(--scale));border:3px solid #64748b;display:flex;flex-direction:column;box-shadow:0 4px 10px rgba(0,0,0,.28);overflow:hidden}
 .green{background:#103b22;border-color:#22c55e}.red{background:#511b1b;border-color:#ef4444}.yellow{background:#56490a;border-color:#eab308}
-.num{font-size:calc(30px * var(--scale));font-weight:900;line-height:1.05;white-space:nowrap}
-.status{font-size:calc(20px * var(--scale));font-weight:900;margin:calc(8px * var(--scale)) 0 calc(7px * var(--scale));line-height:1.05;white-space:nowrap}
+.num{font-size:calc(29px * var(--scale));font-weight:900;line-height:1.05;white-space:nowrap}
+.status{font-size:calc(20px * var(--scale));font-weight:900;margin:calc(7px * var(--scale)) 0 calc(6px * var(--scale));line-height:1.05;white-space:nowrap}
 .green .status{color:#4ade80}.red .status{color:#f87171}.yellow .status{color:#fde047}
-.rate{font-size:calc(18px * var(--scale));font-weight:900;line-height:1.05;margin:0 0 calc(10px * var(--scale));white-space:nowrap}
-.line{font-size:calc(17px * var(--scale));font-weight:700;line-height:1.12;margin:calc(6px * var(--scale)) 0;white-space:nowrap}.line b{font-weight:900}
-.pay{margin-top:calc(7px * var(--scale));padding-top:calc(8px * var(--scale));border-top:2px solid rgba(255,255,255,.3);text-align:center}
-.payLabel{font-size:calc(17px * var(--scale));font-weight:900;white-space:nowrap}.money{font-size:calc(44px * var(--scale));font-weight:900;margin-top:4px;line-height:1.02;color:#fde047;white-space:nowrap}
-@media(max-height:700px){header{height:70px;flex-basis:70px;padding:4px 7px}.wrap{padding:0 7px 5px}.grid{gap:5px;padding-top:5px}.logoWrap img{max-height:60px;max-width:28vw}}
-@media(max-width:900px){header{height:66px;flex-basis:66px}.wrap{padding:0 6px 5px}.grid{gap:4px;padding-top:4px}.title{font-size:clamp(21px,4.8vw,32px)}.clock{font-size:clamp(16px,3vw,23px)}.live{font-size:clamp(13px,2.4vw,19px)}.logoWrap{padding:2px 27%}.logoWrap img{max-height:58px;max-width:31vw}}
+.rate{font-size:calc(18px * var(--scale));font-weight:900;line-height:1.05;margin:0 0 calc(8px * var(--scale));white-space:nowrap}
+.line{font-size:calc(17px * var(--scale));font-weight:700;line-height:1.12;margin:calc(5px * var(--scale)) 0;white-space:nowrap}.line b{font-weight:900}
+.pay{margin-top:calc(6px * var(--scale));padding-top:calc(7px * var(--scale));border-top:2px solid rgba(255,255,255,.3);text-align:center}
+.payLabel{font-size:calc(17px * var(--scale));font-weight:900;white-space:nowrap}.money{font-size:calc(42px * var(--scale));font-weight:900;margin-top:4px;line-height:1.02;color:#fde047;white-space:nowrap}
+@media(max-height:700px){header{height:78px;flex-basis:78px;padding:4px 7px}.wrap{padding:0 7px 5px}.grid{gap:5px;padding-top:5px}.logoWrap img{max-height:68px;max-width:28vw}}
+@media(max-width:900px){header{height:72px;flex-basis:72px}.wrap{padding:0 6px 5px}.grid{gap:4px;padding-top:4px}.title{font-size:clamp(23px,5vw,34px)}.clock{font-size:clamp(16px,3vw,23px)}.live{font-size:clamp(13px,2.4vw,19px)}.logoWrap{padding:2px 27%}.logoWrap img{max-height:64px;max-width:31vw}}
 </style>
 </head>
 <body>
