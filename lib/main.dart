@@ -998,8 +998,8 @@ class _DashboardPageState extends State<DashboardPage>
           styles: const PosStyles(
             align: PosAlign.center,
             bold: true,
-            height: PosTextSize.size2,
-            width: PosTextSize.size2,
+            height: PosTextSize.size1,
+            width: PosTextSize.size1,
           ),
         ),
       );
@@ -1084,8 +1084,8 @@ class _DashboardPageState extends State<DashboardPage>
         styles: const PosStyles(
           align: PosAlign.center,
           bold: true,
-          height: PosTextSize.size2,
-          width: PosTextSize.size2,
+          height: PosTextSize.size1,
+          width: PosTextSize.size1,
         ),
       ));
       bytes.addAll(generator.text(
