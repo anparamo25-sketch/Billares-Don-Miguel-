@@ -25,14 +25,25 @@ jobs:
           dwebp cloud-tv/public/tv-logo.webp -o cloud-tv/public/tv-logo.png
           file cloud-tv/public/tv-logo.png
 
-      - name: Commit generated PNG
+      - name: Use local PNG in Cloud TV
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('cloud-tv/public/index.html')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('https://wsrv.nl/?url=https%3A%2F%2Fraw.githubusercontent.com%2Fanparamo25-sketch%2FBillares-Don-Miguel-%2Fmain%2Fcloud-tv%2Fpublic%2Ftv-logo.webp&output=png&q=100', '/tv-logo.png')
+          s = s.replace("this.src='/tv-logo.webp?v=2'", "this.src='/tv-logo.png'")
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Commit generated TV logo and source update
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add cloud-tv/public/tv-logo.png
+          git add cloud-tv/public/tv-logo.png cloud-tv/public/index.html
           if git diff --cached --quiet; then
-            echo "PNG already current"
+            echo "TV logo files already current"
           else
-            git commit -m "Create TV-compatible PNG logo from official asset"
+            git commit -m "Use local PNG logo for Cloud TV compatibility"
             git push
           fi
