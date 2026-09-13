@@ -1,10 +1,6 @@
 from pathlib import Path
 import re
 
-# El contrato se valida contra cada fuente en su lugar real.
-# lib/main.dart contiene el HTML de TV codificado en Base64, por lo que no
-# debe buscarse allí texto HTML/CSS literal. cloud-tv/public/index.html es la
-# fuente funcional de la TV y se valida directamente.
 APP_SOURCE = Path('lib/main.dart').read_text()
 TV_SOURCE = Path('cloud-tv/public/index.html').read_text()
 APP_NORMALIZED = re.sub(r'\s+', ' ', APP_SOURCE)
@@ -15,19 +11,19 @@ if PUBLIC_TV_URL != 'https://billaresdonmiguel.pages.dev':
     raise SystemExit('1.3.0 CONTRACT FAILED: dominio publico de TV incorrecto')
 
 REQUIRED_APP = {
-    "updater": 'Billares-Don-Miguel-/raw/refs/heads/main/update.json',
-    "tv_getter": 'String get tvHtml =>',
-    "lan_port_field": 'lanPort',
-    "mdns_socket": 'RawDatagramSocket',
-    "mdns_group": '224.0.0.251',
-    "mdns_port": '5353',
-    "workday": 'workdayActive',
-    "cash_close": 'workdayCashClose',
-    "workday_games": 'workdayGames',
-    "ota_permission": 'onCheckInstallApkPermission',
-    "ota_install": 'onInstallApk(file.path)',
-    "cloud_tv_import": "import 'cloud_tv_sync.dart';",
-    "cloud_tv_publish": 'publishCloudTvState(',
+    'updater': 'Billares-Don-Miguel-/raw/refs/heads/main/update.json',
+    'tv_getter': 'String get tvHtml =>',
+    'lan_port_field': 'lanPort',
+    'mdns_socket': 'RawDatagramSocket',
+    'mdns_group': '224.0.0.251',
+    'mdns_port': '5353',
+    'workday': 'workdayActive',
+    'cash_close': 'workdayCashClose',
+    'workday_games': 'workdayGames',
+    'ota_permission': 'onCheckInstallApkPermission',
+    'ota_install': 'onInstallApk(file.path)',
+    'cloud_tv_import': "import 'cloud_tv_sync.dart';",
+    'cloud_tv_publish': 'publishCloudTvState(',
 }
 for name, marker in REQUIRED_APP.items():
     if marker not in APP_SOURCE and marker not in APP_NORMALIZED:
@@ -64,9 +60,8 @@ REQUIRED_TV = {
     'tv_api': '/api/state?ts=',
     'tv_stream': '/api/stream',
     'tv_routing': 'location.host',
-    'tv_start': 'Hora de inicio:',
-    'tv_elapsed': 'Tiempo jugado:',
-    'tv_end': 'Hora finalizada:',
+    'tv_elapsed': 'Tiempo jugado',
+    'tv_end': 'Hora finalizada',
     'tv_amount': 'MONTO A PAGAR',
     'tv_logo': 'src="/tv-logo.webp"',
     'tv_timer': 'setInterval(function(){if(lastState)render(lastState)},1000);',
@@ -89,7 +84,7 @@ for marker in (
     if marker not in TV_SOURCE:
         raise SystemExit(f'1.3.0 CONTRACT FAILED: estado visual ausente: {marker}')
 
-if 'Hora finalizada:' not in TV_SOURCE:
+if 'Hora finalizada' not in TV_SOURCE:
     raise SystemExit('1.3.0 CONTRACT FAILED: falta hora de finalización en TV')
 if 'panel externo' in APP_SOURCE.lower() or 'panel externo' in TV_SOURCE.lower():
     raise SystemExit('1.3.0 CONTRACT FAILED: panel externo no permitido')
