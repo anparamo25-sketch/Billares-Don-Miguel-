@@ -23,10 +23,20 @@ String _elapsedFor(Map<String, dynamic> table) {
 }
 
 Timer? _cloudTvRetryTimer;
+Timer? _cloudTvHeartbeatTimer;
 String? _lastPublishedSignature;
+List<Map<String, dynamic>>? _lastTables;
 bool _cloudTvPublishing = false;
 
 Future<void> publishCloudTvState(List<Map<String, dynamic>> tables) async {
+  _lastTables = tables.map(Map<String, dynamic>.from).toList();
+  _cloudTvHeartbeatTimer ??= Timer.periodic(const Duration(seconds: 5), (_) {
+    final List<Map<String, dynamic>>? current = _lastTables;
+    if (current == null) return;
+    _lastPublishedSignature = null;
+    publishCloudTvState(current);
+  });
+
   if (_cloudTvPublishing) return;
   final List<Map<String, dynamic>> payloadTables = tables.map((
     Map<String, dynamic> table,
@@ -62,7 +72,8 @@ Future<void> publishCloudTvState(List<Map<String, dynamic>> tables) async {
   } catch (_) {
     _cloudTvRetryTimer?.cancel();
     _cloudTvRetryTimer = Timer(const Duration(seconds: 5), () {
-      publishCloudTvState(tables);
+      final List<Map<String, dynamic>>? current = _lastTables;
+      if (current != null) publishCloudTvState(current);
     });
   } finally {
     _cloudTvPublishing = false;
@@ -72,4 +83,8 @@ Future<void> publishCloudTvState(List<Map<String, dynamic>> tables) async {
 void disposeCloudTvSync() {
   _cloudTvRetryTimer?.cancel();
   _cloudTvRetryTimer = null;
+  _cloudTvHeartbeatTimer?.cancel();
+  _cloudTvHeartbeatTimer = null;
+  _lastTables = null;
+  _lastPublishedSignature = null;
 }
