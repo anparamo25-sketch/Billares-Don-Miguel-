@@ -1,0 +1,38 @@
+name: Prepare Cloud TV logo
+
+on:
+  push:
+    paths:
+      - 'cloud-tv/DEPLOY_TRIGGER_2026-09-12.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  prepare-logo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Convert official TV logo to PNG
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y webp
+          dwebp cloud-tv/public/tv-logo.webp -o cloud-tv/public/tv-logo.png
+          file cloud-tv/public/tv-logo.png
+
+      - name: Commit generated PNG
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cloud-tv/public/tv-logo.png
+          if git diff --cached --quiet; then
+            echo "PNG already current"
+          else
+            git commit -m "Create TV-compatible PNG logo from official asset"
+            git push
+          fi
