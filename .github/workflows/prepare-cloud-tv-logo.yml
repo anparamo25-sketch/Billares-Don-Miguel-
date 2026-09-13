@@ -5,6 +5,7 @@ on:
     paths:
       - 'cloud-tv/DEPLOY_TRIGGER_2026-09-12.txt'
       - 'cloud-tv/public/index.html'
+      - 'cloud-tv/public/tv-logo.webp'
       - '.github/workflows/prepare-cloud-tv-logo.yml'
   workflow_dispatch:
 
