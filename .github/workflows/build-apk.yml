@@ -135,8 +135,8 @@ jobs:
           required = [
               'Tiempo jugado',
               'Finalización:',
-              'MONTO A PAGAR',
-              'src="/tv-logo.webp"',
+              'TOTAL A PAGAR',
+              'src="/tv-logo.png"',
               '/api/state?ts=',
               '/api/stream',
               'setInterval(function(){if(lastState)render(lastState)},1000);',
