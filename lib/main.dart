@@ -10,11 +10,13 @@ import 'package:path_provider/path_provider.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:share_plus/share_plus.dart';
 
 import 'cloud_tv_sync.dart';
 import 'receipt_preview_page.dart';
+import 'weekly_report.dart';
 
-const String appVersion = '1.2.9+129';
+const String appVersion = '1.3.0+130';
 const String defaultPassword = '1234';
 const String updateManifestUrl =
     'https://github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json';
@@ -498,7 +500,7 @@ class _DashboardPageState extends State<DashboardPage>
     workdayCashClose = prefs.getDouble('workday_cash_close') ?? 0;
     workdayGames = prefs.getInt('workday_games') ?? 0;
     final String? rawHistory = prefs.getString('history');
-    final DateTime cutoff = DateTime.now().subtract(const Duration(days: 7));
+    final DateTime cutoff = DateTime.now().subtract(const Duration(days: 30));
     if (rawHistory != null && rawHistory.isNotEmpty) {
       try {
         final List<dynamic> data = jsonDecode(rawHistory) as List<dynamic>;
@@ -641,6 +643,16 @@ class _DashboardPageState extends State<DashboardPage>
       workdayCashClose = cash;
     });
     await saveWorkday();
+    final String? printError = await printWorkdaySummary(
+      games: workdayGames,
+      generated: workdayGenerated,
+      cash: workdayCashClose,
+    );
+    if (printError != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(printError)),
+      );
+    }
   }
 
   Future<void> saveTables() async {
@@ -1034,6 +1046,68 @@ class _DashboardPageState extends State<DashboardPage>
     }
   }
 
+  Future<String?> printWorkdaySummary({
+    required int games,
+    required double generated,
+    required double cash,
+  }) async {
+    try {
+      final List<BluetoothInfo> printers =
+          await PrintBluetoothThermal.pairedBluetooths;
+      if (printers.isEmpty) {
+        return 'No hay impresora térmica emparejada para imprimir el cierre.';
+      }
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? savedMac = prefs.getString('thermal_printer_mac');
+      if (savedMac == null || savedMac.isEmpty) {
+        return 'Configura primero la impresora térmica para imprimir el cierre.';
+      }
+      BluetoothInfo? printer;
+      for (final BluetoothInfo item in printers) {
+        if (item.macAdress == savedMac) {
+          printer = item;
+          break;
+        }
+      }
+      if (printer == null) {
+        return 'La impresora guardada ya no está emparejada.';
+      }
+      final bool connected = await PrintBluetoothThermal.connect(
+        macPrinterAddress: printer.macAdress,
+      );
+      if (!connected) return 'No se pudo conectar con la impresora para el cierre.';
+      final CapabilityProfile profile = await CapabilityProfile.load();
+      final Generator generator = Generator(PaperSize.mm58, profile);
+      final List<int> bytes = <int>[];
+      bytes.addAll(generator.text(
+        'Billares Don Miguel',
+        styles: const PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          height: PosTextSize.size2,
+          width: PosTextSize.size2,
+        ),
+      ));
+      bytes.addAll(generator.text(
+        'CIERRE DE JORNADA',
+        styles: const PosStyles(align: PosAlign.center, bold: true),
+      ));
+      bytes.addAll(generator.hr());
+      bytes.addAll(generator.text('Fecha: ${date(DateTime.now())}'));
+      bytes.addAll(generator.text('Hora: ${clock(DateTime.now())}'));
+      bytes.addAll(generator.text('Partidas jugadas: $games'));
+      bytes.addAll(generator.text('Total generado: ${totalMoney(generated)}'));
+      bytes.addAll(generator.text('Efectivo físico: ${totalMoney(cash)}'));
+      bytes.addAll(generator.hr());
+      bytes.addAll(generator.feed(3));
+      bytes.addAll(generator.cut());
+      final bool printed = await PrintBluetoothThermal.writeBytes(bytes);
+      return printed ? null : 'La impresora no aceptó el resumen de cierre.';
+    } catch (_) {
+      return 'No se pudo imprimir el resumen de cierre.';
+    }
+  }
+
   Future<void> collect(BillTable table) async {
     if (table.status != TableStatus.pending ||
         table.start == null ||
@@ -1161,50 +1235,62 @@ class _DashboardPageState extends State<DashboardPage>
     try {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Preparando actualización...')),
-      );
-      final bool installPermission =
-          await ApkInstall().onCheckInstallApkPermission();
-      if (!installPermission) {
-        if (mounted)
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Activa el permiso para instalar aplicaciones desconocidas y vuelve a pulsar Actualizar.',
-              ),
-            ),
-          );
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Descargando actualización...')),
       );
-      final Directory directory = await getApplicationDocumentsDirectory();
-      final String path = '${directory.path}/billares-don-miguel-update.apk';
-      client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
-      client.userAgent = 'Billares-Don-Miguel/1.2.6';
-      final HttpClientRequest request = await client.getUrl(Uri.parse(url));
-      final HttpClientResponse response = await request.close();
-      if (response.statusCode != HttpStatus.ok)
-        throw HttpException('HTTP ${response.statusCode}');
+      final List<Directory>? caches = await getExternalCacheDirectories();
+      final Directory cache =
+          caches != null && caches.isNotEmpty
+              ? caches.first
+              : await getTemporaryDirectory();
+      final String path = '${cache.path}/billares-don-miguel-update.apk';
       final File file = File(path);
+      if (await file.exists()) await file.delete();
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
+      client.userAgent = 'Billares-Don-Miguel/1.3.0';
+      final HttpClientRequest request = await client.getUrl(Uri.parse(url));
+      request.headers.set(HttpHeaders.cacheControlHeader, 'no-cache');
+      final HttpClientResponse response = await request.close();
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException('HTTP ${response.statusCode}');
+      }
       final IOSink sink = file.openWrite();
       await response.pipe(sink);
       await sink.flush();
       await sink.close();
-      if (!await file.exists() || await file.length() < 1024 * 1024)
+      if (!await file.exists() || await file.length() < 1024 * 1024) {
         throw const HttpException('APK inválido o incompleto');
-      final bool installStarted = await ApkInstall().onInstallApk(path);
-      if (!installStarted && mounted)
+      }
+      final bool installPermission =
+          await ApkInstall().onCheckInstallApkPermission();
+      if (!installPermission) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Android bloqueó la instalación. Activa "Instalar aplicaciones desconocidas" para Billares Don Miguel y vuelve a intentarlo.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Abriendo instalador de Android...')),
+        );
+      }
+      final bool installStarted = await ApkInstall().onInstallApk(file.path);
+      if (!installStarted && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Android no inició el instalador. Verifica el permiso de instalación.',
+              'Android no inició el instalador. Vuelve a pulsar Actualizar.',
             ),
           ),
         );
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -1212,6 +1298,7 @@ class _DashboardPageState extends State<DashboardPage>
             ),
           ),
         );
+      }
     } finally {
       client?.close(force: true);
     }
@@ -1759,6 +1846,57 @@ class _DashboardPageState extends State<DashboardPage>
     },
   );
 
+  Future<void> downloadWeeklyPdf() async {
+    try {
+      final DateTime now = DateTime.now();
+      final DateTime weekStart = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(Duration(days: now.weekday - 1));
+      final DateTime weekEnd = weekStart.add(const Duration(days: 6));
+      final List<WeeklyReportDay> days = <WeeklyReportDay>[];
+      for (int i = 0; i < 7; i++) {
+        final DateTime day = weekStart.add(Duration(days: i));
+        final List<HistoryEntry> entries = history.where(
+          (HistoryEntry e) =>
+              e.workDate.year == day.year &&
+              e.workDate.month == day.month &&
+              e.workDate.day == day.day,
+        ).toList();
+        days.add(
+          WeeklyReportDay(
+            date: day,
+            sessions: entries.length,
+            amount: entries.fold<double>(
+              0,
+              (double total, HistoryEntry e) => total + e.amount,
+            ),
+          ),
+        );
+      }
+      final Directory directory = await getApplicationDocumentsDirectory();
+      final File file = await WeeklyReportBuilder.writePdf(
+        path: '${directory.path}/Billares-Don-Miguel-reporte-semanal.pdf',
+        start: weekStart,
+        end: weekEnd,
+        days: days,
+      );
+      await Share.shareXFiles(
+        <XFile>[XFile(file.path)],
+        subject: 'Billares Don Miguel - reporte semanal',
+        text: 'Reporte semanal de Billares Don Miguel.',
+        fileNameOverrides: <String>['Billares-Don-Miguel-reporte-semanal.pdf'],
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo generar el PDF semanal.')),
+        );
+      }
+    }
+  }
+
   Widget historyPage() {
     final Map<String, List<HistoryEntry>> groups =
         <String, List<HistoryEntry>>{};
@@ -1775,7 +1913,7 @@ class _DashboardPageState extends State<DashboardPage>
         Card(
           child: ListTile(
             leading: const Icon(Icons.today),
-            title: const Text('Últimos 7 días'),
+            title: const Text('Últimos 30 días'),
             subtitle: const Text(
               'Movimientos organizados por fecha de trabajo',
             ),
@@ -1785,11 +1923,20 @@ class _DashboardPageState extends State<DashboardPage>
             ),
           ),
         ),
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.icon(
+            onPressed: downloadWeeklyPdf,
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            label: const Text('Descargar PDF semanal'),
+          ),
+        ),
         if (keys.isEmpty)
           const Padding(
             padding: EdgeInsets.all(24),
             child: Center(
-              child: Text('No hay movimientos en los últimos 7 días.'),
+              child: Text('No hay movimientos en los últimos 30 días.'),
             ),
           ),
         ...keys.map((String key) {
