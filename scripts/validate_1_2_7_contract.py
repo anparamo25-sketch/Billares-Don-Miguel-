@@ -12,7 +12,7 @@ TV_NORMALIZED = re.sub(r'\s+', ' ', TV_SOURCE)
 
 PUBLIC_TV_URL = 'https://billaresdonmiguel.pages.dev'
 if PUBLIC_TV_URL != 'https://billaresdonmiguel.pages.dev':
-    raise SystemExit('1.2.9 CONTRACT FAILED: dominio publico de TV incorrecto')
+    raise SystemExit('1.3.0 CONTRACT FAILED: dominio publico de TV incorrecto')
 
 REQUIRED_APP = {
     "updater": 'Billares-Don-Miguel-/raw/refs/heads/main/update.json',
@@ -25,13 +25,13 @@ REQUIRED_APP = {
     "cash_close": 'workdayCashClose',
     "workday_games": 'workdayGames',
     "ota_permission": 'onCheckInstallApkPermission',
-    "ota_install": 'onInstallApk(path)',
+    "ota_install": 'onInstallApk(file.path)',
     "cloud_tv_import": "import 'cloud_tv_sync.dart';",
     "cloud_tv_publish": 'publishCloudTvState(',
 }
 for name, marker in REQUIRED_APP.items():
     if marker not in APP_SOURCE and marker not in APP_NORMALIZED:
-        raise SystemExit(f'1.2.9 CONTRACT FAILED: falta {name}: {marker}')
+        raise SystemExit(f'1.3.0 CONTRACT FAILED: falta {name}: {marker}')
 
 rate_decl = re.search(
     r'\btableRates\s*=\s*(?:<\s*int\s*,\s*double\s*>\s*)?\{([^{}]*)\}',
@@ -39,17 +39,17 @@ rate_decl = re.search(
     flags=re.S,
 )
 if not rate_decl:
-    raise SystemExit('1.2.9 CONTRACT FAILED: tarifas fijas incorrectas o ausentes')
+    raise SystemExit('1.3.0 CONTRACT FAILED: tarifas fijas incorrectas o ausentes')
 entries = re.findall(r'(\d+)\s*:\s*(\d+(?:\.\d+)?)', rate_decl.group(1))
 actual_rates = {int(table): float(rate) for table, rate in entries}
 expected_rates = {1: 120.0, 2: 120.0, 3: 100.0, 4: 100.0, 5: 70.0}
 if actual_rates != expected_rates or len(entries) != len(expected_rates):
-    raise SystemExit('1.2.9 CONTRACT FAILED: tarifas fijas incorrectas o ausentes')
+    raise SystemExit('1.3.0 CONTRACT FAILED: tarifas fijas incorrectas o ausentes')
 
 for port in (80, 8080):
     pattern = rf'HttpServer\.bind\(\s*InternetAddress\.anyIPv4\s*,\s*{port}\b'
     if not re.search(pattern, APP_NORMALIZED):
-        raise SystemExit(f'1.2.9 CONTRACT FAILED: servidor LAN sin soporte para puerto {port}')
+        raise SystemExit(f'1.3.0 CONTRACT FAILED: servidor LAN sin soporte para puerto {port}')
 
 for pattern, name in (
     (r'(?m)^\s*Future<void>\s+startLanServer\s*\(', 'startLanServer'),
@@ -57,7 +57,7 @@ for pattern, name in (
     (r'(?m)^\s*String\s+get\s+tvHtml\s*=>', 'tvHtml'),
 ):
     if len(re.findall(pattern, APP_SOURCE)) != 1:
-        raise SystemExit(f'1.2.9 CONTRACT FAILED: {name} debe existir exactamente una vez')
+        raise SystemExit(f'1.3.0 CONTRACT FAILED: {name} debe existir exactamente una vez')
 
 REQUIRED_TV = {
     'tv_title': 'Billares Don Miguel',
@@ -73,13 +73,11 @@ REQUIRED_TV = {
 }
 for name, marker in REQUIRED_TV.items():
     if marker not in TV_SOURCE and marker not in TV_NORMALIZED:
-        raise SystemExit(f'1.2.9 CONTRACT FAILED: falta {name} en la fuente TV: {marker}')
+        raise SystemExit(f'1.3.0 CONTRACT FAILED: falta {name} en la fuente TV: {marker}')
 
-# Se validan únicamente estilos que forman parte del contrato visual real.
-# text-shadow no es un requisito funcional de la interfaz TV actual.
 for marker in ('color:#1557c0', 'font-size:clamp('):
     if marker not in TV_SOURCE:
-        raise SystemExit(f'1.2.9 CONTRACT FAILED: estilo TV ausente: {marker}')
+        raise SystemExit(f'1.3.0 CONTRACT FAILED: estilo TV ausente: {marker}')
 for marker in (
     '.green{',
     '.red{',
@@ -89,18 +87,18 @@ for marker in (
     "'Pendiente de cobro'",
 ):
     if marker not in TV_SOURCE:
-        raise SystemExit(f'1.2.9 CONTRACT FAILED: estado visual ausente: {marker}')
+        raise SystemExit(f'1.3.0 CONTRACT FAILED: estado visual ausente: {marker}')
 
 if 'Hora finalizada:' not in TV_SOURCE:
-    raise SystemExit('1.2.9 CONTRACT FAILED: falta hora de finalización en TV')
+    raise SystemExit('1.3.0 CONTRACT FAILED: falta hora de finalización en TV')
 if 'panel externo' in APP_SOURCE.lower() or 'panel externo' in TV_SOURCE.lower():
-    raise SystemExit('1.2.9 CONTRACT FAILED: panel externo no permitido')
+    raise SystemExit('1.3.0 CONTRACT FAILED: panel externo no permitido')
 for forbidden in ('faltante', 'sobrante', 'diferencia de caja', 'caja cuadrada'):
     if forbidden in APP_SOURCE.lower() or forbidden in TV_SOURCE.lower():
-        raise SystemExit(f'1.2.9 CONTRACT FAILED: lógica prohibida: {forbidden}')
+        raise SystemExit(f'1.3.0 CONTRACT FAILED: lógica prohibida: {forbidden}')
 
 version_match = re.search(r"const String appVersion = '([^']+)';", APP_SOURCE)
-if not version_match or version_match.group(1) != '1.2.9+129':
-    raise SystemExit('1.2.9 CONTRACT FAILED: la fuente no corresponde a la versión 1.2.9+129')
+if not version_match or version_match.group(1) != '1.3.0+130':
+    raise SystemExit('1.3.0 CONTRACT FAILED: la fuente no corresponde a la versión 1.3.0+130')
 
-print(f'OK: contrato funcional 1.2.9/129 validado; TV publica: {PUBLIC_TV_URL}')
+print(f'OK: contrato funcional 1.3.0/130 validado; TV publica: {PUBLIC_TV_URL}')
