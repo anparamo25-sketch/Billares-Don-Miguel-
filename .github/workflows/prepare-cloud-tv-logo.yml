@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'cloud-tv/DEPLOY_TRIGGER_2026-09-12.txt'
+      - 'cloud-tv/public/index.html'
   workflow_dispatch:
 
 permissions:
