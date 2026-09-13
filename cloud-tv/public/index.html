@@ -11,7 +11,7 @@
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#05070b;color:#fff;font-family:Arial,sans-serif}
 .wrap{width:100%;height:100vh;padding:0 10px 7px;display:flex;flex-direction:column;overflow:hidden}
 header{height:68px;flex:0 0 68px;padding:4px 7px;background:#fff;border-bottom:3px solid #1557c0;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px}
-.title{justify-self:start;color:#1557c0;font-size:clamp(23px,3vw,38px);font-weight:900;line-height:1.02;letter-spacing:.2px}.logoWrap{display:none}.liveBox{justify-self:end;text-align:center;color:#1557c0}.clock{font-size:clamp(18px,1.9vw,26px);font-weight:900;line-height:1.05}.live{font-size:clamp(14px,1.55vw,21px);font-weight:900;margin-top:2px}
+.title{justify-self:start;color:#1557c0;font-size:clamp(23px,3vw,38px);font-weight:900;line-height:1.02;letter-spacing:.2px}.logoWrap{display:flex;align-items:center;justify-content:center;height:100%;min-width:0;overflow:hidden}.logoWrap img{display:block;height:clamp(50px,8vh,62px);width:auto;max-width:14vw;object-fit:contain;object-position:center}.liveBox{justify-self:end;text-align:center;color:#1557c0}.clock{font-size:clamp(18px,1.9vw,26px);font-weight:900;line-height:1.05}.live{font-size:clamp(14px,1.55vw,21px);font-weight:900;margin-top:2px}
 .grid{width:100%;flex:1;min-height:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;padding:7px 0 0;overflow:hidden}
 .card{--scale:1;height:100%;min-height:0;min-width:0;border-radius:10px;padding:calc(11px * var(--scale)) calc(9px * var(--scale));border:3px solid #64748b;display:flex;flex-direction:column;box-shadow:0 4px 10px rgba(0,0,0,.28);overflow:hidden;justify-content:flex-start}
 .green{background:#103b22;border-color:#22c55e}.red{background:#511b1b;border-color:#ef4444}.yellow{background:#56490a;border-color:#eab308}
@@ -19,8 +19,8 @@ header{height:68px;flex:0 0 68px;padding:4px 7px;background:#fff;border-bottom:3
 .rate{font-size:calc(18px * var(--scale));font-weight:900;line-height:1.05;margin:0 0 calc(10px * var(--scale));white-space:nowrap}.line{font-size:calc(17px * var(--scale));font-weight:700;line-height:1.12;margin:calc(6px * var(--scale)) 0;white-space:nowrap}.line b{font-weight:900}
 .pay{margin-top:calc(7px * var(--scale));padding-top:calc(8px * var(--scale));border-top:2px solid rgba(255,255,255,.3);text-align:center;flex:0 0 auto}.payLabel{font-size:calc(17px * var(--scale));font-weight:900;letter-spacing:.3px;white-space:nowrap}.money{font-size:calc(44px * var(--scale));font-weight:900;margin-top:4px;line-height:1.02;color:#fde047;white-space:nowrap}
 /* El total queda inmediatamente debajo de Finalización y sobresale ligeramente para facilitar su lectura. */
-@media(max-height:700px){header{height:58px;flex-basis:58px;padding:3px 5px}.wrap{padding:0 7px 5px}.grid{gap:5px;padding-top:5px}}
-@media(max-width:900px){header{height:56px;flex-basis:56px}.wrap{padding:0 6px 5px}.grid{gap:4px;padding-top:4px}.title{font-size:clamp(18px,4vw,28px)}.clock{font-size:clamp(15px,2.8vw,22px)}.live{font-size:clamp(12px,2.2vw,18px)}}
+@media(max-height:700px){header{height:58px;flex-basis:58px;padding:3px 5px}.wrap{padding:0 7px 5px}.grid{gap:5px;padding-top:5px}.logoWrap img{height:50px}}
+@media(max-width:900px){header{height:56px;flex-basis:56px}.wrap{padding:0 6px 5px}.grid{gap:4px;padding-top:4px}.title{font-size:clamp(18px,4vw,28px)}.clock{font-size:clamp(15px,2.8vw,22px)}.live{font-size:clamp(12px,2.2vw,18px)}.logoWrap img{height:48px;max-width:18vw}}
 </style>
 </head>
 <body>
