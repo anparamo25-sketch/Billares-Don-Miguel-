@@ -16,7 +16,7 @@ void main() {
     expect(tableRates[3], 100);
     expect(tableRates[4], 100);
     expect(tableRates[5], 70);
-    expect(appVersion, '1.2.9+129');
+    expect(appVersion, '1.3.0+130');
   });
 
   test('Los estados funcionales de una mesa existen sin arquitectura de dispositivos por mesa', () {
