@@ -1,0 +1,67 @@
+name: One-time thermal receipt header correction
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  correct-source:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Correct only the 48mm thermal headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('lib/main.dart')
+          s = p.read_text(encoding='utf-8')
+
+          old = """height: PosTextSize.size2,\n            width: PosTextSize.size2,"""
+          new = """height: PosTextSize.size1,\n            width: PosTextSize.size1,"""
+
+          target = """'Billares Don Miguel',\n          styles: const PosStyles(\n            align: PosAlign.center,\n            bold: true,\n            height: PosTextSize.size2,\n            width: PosTextSize.size2,"""
+
+          count = s.count(target)
+          if count != 2:
+              raise SystemExit(f'Se esperaban exactamente 2 encabezados térmicos de Billares Don Miguel; encontrados: {count}')
+
+          changed = s.replace(old, new)
+          if changed == s:
+              raise SystemExit('No se realizó ningún cambio en main.dart')
+
+          p.write_text(changed, encoding='utf-8')
+          PY
+
+          dart format lib/main.dart
+
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('lib/main.dart').read_text(encoding='utf-8')
+          target = """'Billares Don Miguel',\n          styles: const PosStyles(\n            align: PosAlign.center,\n            bold: true,\n            height: PosTextSize.size1,\n            width: PosTextSize.size1,"""
+          if s.count(target) != 2:
+              raise SystemExit('La verificación final no encontró exactamente los 2 encabezados corregidos')
+          print('THERMAL_HEADER_48MM_SOURCE=OK')
+          PY
+
+      - name: Commit source correction and remove one-time workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/one-time-receipt-header-fix.yml
+          git add lib/main.dart
+          git commit -m 'fix: fit thermal receipt business name within 48mm'
+          git push origin HEAD:main
