@@ -5,7 +5,7 @@ on:
     paths:
       - 'cloud-tv/DEPLOY_TRIGGER_2026-09-12.txt'
       - 'cloud-tv/public/index.html'
-      - 'cloud-tv/public/tv-logo.webp'
+      - 'cloud-tv/public/tv-logo.png'
       - '.github/workflows/prepare-cloud-tv-logo.yml'
   workflow_dispatch:
 
@@ -21,33 +21,20 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Install native WebP converter
+      - name: Restore the original PNG logo without conversion
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends webp
-          command -v dwebp
-          dwebp -version
-
-      - name: Convert official TV logo with native WebP decoder
-        shell: bash
-        run: |
-          set -euo pipefail
-          src='cloud-tv/public/tv-logo.webp'
-          dst='cloud-tv/public/tv-logo.png'
-          test -s "$src"
-          rm -f "$dst"
-          dwebp "$src" -o "$dst"
-          test -s "$dst"
-          file "$dst"
+          git fetch --no-tags --depth=1 origin 88d5c19ac93916f8be7bc659b645c310061bf72a
+          git checkout 88d5c19ac93916f8be7bc659b645c310061bf72a -- cloud-tv/public/tv-logo.png
+          test -s cloud-tv/public/tv-logo.png
           python3 - <<'PY'
           from pathlib import Path
           p = Path('cloud-tv/public/tv-logo.png')
           data = p.read_bytes()
           if not data.startswith(b'\x89PNG\r\n\x1a\n'):
-              raise SystemExit('Generated file is not a valid PNG')
-          print(f'Generated valid PNG: {p} ({len(data)} bytes)')
+              raise SystemExit('Original file is not a valid PNG')
+          print(f'Original PNG preserved: {p} ({len(data)} bytes)')
           PY
 
       - name: Force Cloud TV to use the local PNG
@@ -59,18 +46,13 @@ jobs:
           import re
           p = Path('cloud-tv/public/index.html')
           s = p.read_text(encoding='utf-8')
-          s = re.sub(
-              r'<img id="tvLogo"[^>]*>',
-              '<img id="tvLogo" src="/tv-logo.png" alt="Billares Don Miguel" loading="eager" decoding="sync">',
-              s,
-              count=1,
-          )
+          s = re.sub(r'<img id="tvLogo"[^>]*>', '<img id="tvLogo" src="/tv-logo.png" alt="Billares Don Miguel" loading="eager" decoding="sync">', s, count=1)
           s = re.sub(r"this\.src='/tv-logo\.webp[^']*'", "this.src='/tv-logo.png'", s)
           p.write_text(s, encoding='utf-8')
           PY
           grep -q 'src="/tv-logo.png"' cloud-tv/public/index.html
 
-      - name: Commit generated PNG and source update
+      - name: Commit preserved PNG and source update
         shell: bash
         run: |
           set -euo pipefail
@@ -80,6 +62,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "TV logo files already current"
           else
-            git commit -m "Add native-converted Cloud TV PNG logo"
+            git commit -m "Restore original PNG logo for Cloud TV"
             git push
           fi
