@@ -5,6 +5,7 @@ on:
     paths:
       - 'cloud-tv/DEPLOY_TRIGGER_2026-09-12.txt'
       - 'cloud-tv/public/index.html'
+      - '.github/workflows/prepare-cloud-tv-logo.yml'
   workflow_dispatch:
 
 permissions:
@@ -20,19 +21,29 @@ jobs:
           fetch-depth: 1
 
       - name: Convert official TV logo to PNG
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y webp
-          dwebp cloud-tv/public/tv-logo.webp -o cloud-tv/public/tv-logo.png
+          set -euo pipefail
+          if command -v magick >/dev/null 2>&1; then
+            magick cloud-tv/public/tv-logo.webp cloud-tv/public/tv-logo.png
+          elif command -v convert >/dev/null 2>&1; then
+            convert cloud-tv/public/tv-logo.webp cloud-tv/public/tv-logo.png
+          elif command -v ffmpeg >/dev/null 2>&1; then
+            ffmpeg -y -i cloud-tv/public/tv-logo.webp cloud-tv/public/tv-logo.png
+          else
+            echo "No compatible image converter is available on the runner"
+            exit 1
+          fi
           file cloud-tv/public/tv-logo.png
+          test -s cloud-tv/public/tv-logo.png
 
       - name: Force Cloud TV to use the local PNG
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p = Path('cloud-tv/public/index.html')
           s = p.read_text(encoding='utf-8')
-          import re
           s = re.sub(r'<img id="tvLogo"[^>]*>', '<img id="tvLogo" src="/tv-logo.png" alt="Billares Don Miguel">', s)
           s = s.replace("this.src='/tv-logo.webp?v=3'", "this.src='/tv-logo.png'")
           s = s.replace("this.src='/tv-logo.webp?v=2'", "this.src='/tv-logo.png'")
@@ -48,6 +59,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "TV logo files already current"
           else
-            git commit -m "Use local PNG logo for Cloud TV compatibility"
+            git commit -m "Add converted Cloud TV PNG logo"
             git push
           fi
