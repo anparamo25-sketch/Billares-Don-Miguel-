@@ -3,6 +3,16 @@ import re
 
 p = Path('lib/main.dart')
 s = p.read_text(encoding='utf-8')
+
+# The v1.3.0 source is already present on main in current releases. The
+# thermal receipt header correction is a source-level migration, not a
+# runtime patch: apply it only to the two business-name thermal headers.
+thermal_header = """'Billares Don Miguel',\n          styles: const PosStyles(\n            align: PosAlign.center,\n            bold: true,\n            height: PosTextSize.size2,\n            width: PosTextSize.size2,"""
+thermal_header_fixed = """'Billares Don Miguel',\n          styles: const PosStyles(\n            align: PosAlign.center,\n            bold: true,\n            height: PosTextSize.size1,\n            width: PosTextSize.size1,"""
+if s.count(thermal_header) == 2:
+    s = s.replace(thermal_header, thermal_header_fixed)
+    p.write_text(s, encoding='utf-8')
+
 if "const String appVersion = '1.3.0+130';" in s:
     raise SystemExit(0)
 
