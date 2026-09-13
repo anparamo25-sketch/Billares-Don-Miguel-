@@ -134,7 +134,7 @@ jobs:
           html = Path('cloud-tv/public/index.html').read_text()
           required = [
               'Tiempo jugado',
-              'Hora finalizada',
+              'Finalización:',
               'MONTO A PAGAR',
               'src="/tv-logo.webp"',
               '/api/state?ts=',
