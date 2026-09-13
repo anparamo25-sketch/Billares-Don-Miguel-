@@ -1,5 +1,7 @@
 name: Prepare Cloud TV logo
 
+# Cloud TV deployment refresh: preserve the original PNG and trigger the hosting redeploy.
+
 on:
   push:
     paths:
