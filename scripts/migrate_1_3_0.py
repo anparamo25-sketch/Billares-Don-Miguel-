@@ -6,12 +6,25 @@ s = p.read_text(encoding='utf-8')
 
 # The v1.3.0 source is already present on main in current releases. The
 # thermal receipt header correction is a source-level migration, not a
-# runtime patch: apply it only to the two business-name thermal headers.
-thermal_header = """'Billares Don Miguel',\n          styles: const PosStyles(\n            align: PosAlign.center,\n            bold: true,\n            height: PosTextSize.size2,\n            width: PosTextSize.size2,"""
-thermal_header_fixed = """'Billares Don Miguel',\n          styles: const PosStyles(\n            align: PosAlign.center,\n            bold: true,\n            height: PosTextSize.size1,\n            width: PosTextSize.size1,"""
-if s.count(thermal_header) == 2:
-    s = s.replace(thermal_header, thermal_header_fixed)
-    p.write_text(s, encoding='utf-8')
+# runtime patch: update only the two actual thermal-print header blocks.
+pattern = re.compile(
+    r"('Billares Don Miguel',\s*styles:\s*const PosStyles\(\s*"
+    r"align:\s*PosAlign\.center,\s*"
+    r"bold:\s*true,\s*"
+    r"height:\s*)PosTextSize\.size2(,\s*width:\s*)PosTextSize\.size2(,?)",
+    re.MULTILINE,
+)
+
+def fix_header(match: re.Match[str]) -> str:
+    return f"{match.group(1)}PosTextSize.size1{match.group(2)}PosTextSize.size1{match.group(3)}"
+
+matches = list(pattern.finditer(s))
+if len(matches) != 2:
+    raise SystemExit(
+        f'No se aplicó la corrección: se esperaban 2 encabezados térmicos size2 y se encontraron {len(matches)}.'
+    )
+s = pattern.sub(fix_header, s)
+p.write_text(s, encoding='utf-8')
 
 if "const String appVersion = '1.3.0+130';" in s:
     raise SystemExit(0)
@@ -29,8 +42,8 @@ s = s.replace("const Duration(days: 7)", "const Duration(days: 30)")
 s = s.replace("'Últimos 7 días'", "'Últimos 30 días'")
 s = s.replace("No hay movimientos en los últimos 7 días.", "No hay movimientos en los últimos 30 días.")
 
-old = """    await saveWorkday();\n  }\n\n  Future<void> saveTables() async {"""
-new = """    await saveWorkday();\n    final String? printError = await printWorkdaySummary(\n      games: workdayGames,\n      generated: workdayGenerated,\n      cash: workdayCashClose,\n    );\n    if (printError != null && mounted) {\n      ScaffoldMessenger.of(context).showSnackBar(\n        SnackBar(content: Text(printError)),\n      );\n    }\n  }\n\n  Future<void> saveTables() async {"""
+old = """    await saveWorkday;\n  }\n\n  Future<void> saveTables() async {"""
+new = """    await saveWorkday;\n    final String? printError = await printWorkdaySummary(\n      games: workdayGames,\n      generated: workdayGenerated,\n      cash: workdayCashClose,\n    );\n    if (printError != null && mounted) {\n      ScaffoldMessenger.of(context).showSnackBar(\n        SnackBar(content: Text(printError)),\n      );\n    }\n  }\n\n  Future<void> saveTables() async {"""
 if old not in s:
     raise SystemExit('closeWorkday anchor missing')
 s = s.replace(old, new, 1)
