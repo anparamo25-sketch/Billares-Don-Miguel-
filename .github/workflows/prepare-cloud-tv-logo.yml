@@ -20,20 +20,28 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Convert official TV logo to PNG
+      - name: Convert official TV logo to PNG with Pillow
         shell: bash
         run: |
           set -euo pipefail
-          if command -v magick >/dev/null 2>&1; then
-            magick cloud-tv/public/tv-logo.webp cloud-tv/public/tv-logo.png
-          elif command -v convert >/dev/null 2>&1; then
-            convert cloud-tv/public/tv-logo.webp cloud-tv/public/tv-logo.png
-          elif command -v ffmpeg >/dev/null 2>&1; then
-            ffmpeg -y -i cloud-tv/public/tv-logo.webp cloud-tv/public/tv-logo.png
-          else
-            echo "No compatible image converter is available on the runner"
-            exit 1
-          fi
+          python3 -m venv /tmp/tv-logo-venv
+          /tmp/tv-logo-venv/bin/python -m pip install --disable-pip-version-check --no-input pillow
+          /tmp/tv-logo-venv/bin/python - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          src = Path('cloud-tv/public/tv-logo.webp')
+          dst = Path('cloud-tv/public/tv-logo.png')
+          if not src.is_file() or src.stat().st_size == 0:
+              raise SystemExit('Official TV logo source is missing or empty')
+          with Image.open(src) as image:
+              image.load()
+              if image.mode not in ('RGBA', 'LA'):
+                  image = image.convert('RGBA')
+              image.save(dst, format='PNG', optimize=True)
+          if not dst.is_file() or dst.stat().st_size == 0:
+              raise SystemExit('PNG logo was not generated')
+          print(f'Generated {dst} ({dst.stat().st_size} bytes)')
+          PY
           file cloud-tv/public/tv-logo.png
           test -s cloud-tv/public/tv-logo.png
 
@@ -44,12 +52,12 @@ jobs:
           import re
           p = Path('cloud-tv/public/index.html')
           s = p.read_text(encoding='utf-8')
-          s = re.sub(r'<img id="tvLogo"[^>]*>', '<img id="tvLogo" src="/tv-logo.png" alt="Billares Don Miguel">', s)
+          s = re.sub(r'<img id="tvLogo"[^>]*>', '<img id="tvLogo" src="/tv-logo.png" alt="Billares Don Miguel" loading="eager" decoding="sync">', s)
           s = s.replace("this.src='/tv-logo.webp?v=3'", "this.src='/tv-logo.png'")
           s = s.replace("this.src='/tv-logo.webp?v=2'", "this.src='/tv-logo.png'")
           p.write_text(s, encoding='utf-8')
           PY
-          grep -o 'src="/tv-logo.png"' cloud-tv/public/index.html
+          grep -q 'src="/tv-logo.png"' cloud-tv/public/index.html
 
       - name: Commit generated PNG and source update
         run: |
@@ -59,6 +67,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "TV logo files already current"
           else
-            git commit -m "Add converted Cloud TV PNG logo"
+            git commit -m "Add compatible Cloud TV PNG logo"
             git push
           fi
