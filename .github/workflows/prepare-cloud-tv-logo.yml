@@ -1,21 +1,20 @@
 name: Prepare Cloud TV logo
 
-# Cloud TV deployment refresh: preserve the correct original PNG and trigger the hosting redeploy.
+# Cloud TV: preserve and publish the exact original PNG logo. No WebP conversion and no image resizing.
 
 on:
   push:
     paths:
-      - 'cloud-tv/DEPLOY_TRIGGER_2026-09-12.txt'
       - 'cloud-tv/public/index.html'
       - 'cloud-tv/public/tv-logo.png'
       - '.github/workflows/prepare-cloud-tv-logo.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  prepare-logo:
+  verify-logo:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -23,49 +22,29 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Restore the correct original PNG logo without WebP conversion
+      - name: Verify exact original PNG logo
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin 3f28f366c2626b3f231527c08c5109b869776c95
-          git checkout 3f28f366c2626b3f231527c08c5109b869776c95 -- cloud-tv/public/tv-logo.png
           test -s cloud-tv/public/tv-logo.png
           file cloud-tv/public/tv-logo.png
-
-      - name: Prepare 1024x1024 PNG from the correct original artwork
-        shell: bash
-        run: |
-          set -euo pipefail
-          identify cloud-tv/public/tv-logo.png
-          convert cloud-tv/public/tv-logo.png -resize 1024x1024! -define png:color-type=6 -strip cloud-tv/public/tv-logo.png
-          identify cloud-tv/public/tv-logo.png
-          test "$(identify -format '%m %wx%h' cloud-tv/public/tv-logo.png)" = "PNG 1024x1024"
-
-      - name: Force Cloud TV to use the local PNG
-        shell: bash
-        run: |
-          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import re
-          p = Path('cloud-tv/public/index.html')
-          s = p.read_text(encoding='utf-8')
-          s = re.sub(r'<img id="tvLogo"[^>]*>', '<img id="tvLogo" src="/tv-logo.png" alt="Billares Don Miguel" loading="eager" decoding="sync">', s, count=1)
-          s = re.sub(r"this\.src='/tv-logo\.webp[^']*'", "this.src='/tv-logo.png'", s)
-          p.write_text(s, encoding='utf-8')
+          import struct
+          p = Path('cloud-tv/public/tv-logo.png')
+          data = p.read_bytes()
+          if not data.startswith(b'\x89PNG\r\n\x1a\n'):
+              raise SystemExit('Logo is not a valid PNG')
+          if len(data) < 24 or data[12:16] != b'IHDR':
+              raise SystemExit('PNG IHDR is missing')
+          width, height = struct.unpack('>II', data[16:24])
+          print(f'Exact PNG present: {p} ({len(data)} bytes, {width}x{height})')
           PY
-          grep -q 'src="/tv-logo.png"' cloud-tv/public/index.html
 
-      - name: Commit correct PNG logo
+      - name: Verify Cloud TV references PNG
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add cloud-tv/public/tv-logo.png cloud-tv/public/index.html
-          if git diff --cached --quiet; then
-            echo "TV logo already current"
-          else
-            git commit -m "Use correct original PNG logo in Cloud TV"
-            git push
-          fi
+          grep -q 'src="/tv-logo.png"' cloud-tv/public/index.html
+          grep -q 'class="cardLogo" src="/tv-logo.png"' cloud-tv/public/index.html
+          echo 'Cloud TV title bar and table cards reference the PNG logo.'
