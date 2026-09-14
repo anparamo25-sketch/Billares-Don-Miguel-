@@ -1,0 +1,130 @@
+name: Billares Don Miguel - v1.3.1 Build APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-apk-1-3-1.yml'
+      - '.github/triggers/v1.3.1.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: 3.47.3
+  BUILD_NAME: 1.3.1
+  BUILD_NUMBER: 131
+  COMPILE_SDK: 36
+  NDK_VERSION: 28.2.13676358
+  GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx6g\ -XX:MaxMetaspaceSize=2g\ -XX:+HeapDumpOnOutOfMemoryError\ -Dfile.encoding=UTF-8
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout codigo actual
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Aplicar actualizacion 1.3.1 de impresion termica
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/migrate_1_3_1.py
+          dart format lib/main.dart
+          git diff --check
+          grep -q "const String appVersion = '1.3.1+131'" lib/main.dart
+          grep -q "version: 1.3.1+131" pubspec.yaml
+          grep -q '"version":"1.3.1+131"' update.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/main.dart pubspec.yaml update.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'fix: compact 48mm thermal receipt layout v1.3.1'
+            git push origin HEAD:main
+          fi
+
+      - name: Verificar solo cambios de impresion termica
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'Generator(PaperSize.mm58, profile, spaceBetweenRows: 0)' lib/main.dart
+          test "$(grep -c 'setGlobalFont(PosFontType.fontB)' lib/main.dart)" -eq 2
+          test "$(grep -c 'generator.feed(1)' lib/main.dart)" -eq 2
+          ! grep -A120 'Future<String?> printReceipt(BillTable table) async {' lib/main.dart | grep -q 'PosTextSize.size2'
+          ! grep -A120 'Future<String?> printWorkdaySummary(' lib/main.dart | grep -q 'PosTextSize.size2'
+          grep -q 'Future<String?> printReceipt(BillTable table)' lib/main.dart
+          grep -q 'Future<String?> printWorkdaySummary' lib/main.dart
+          grep -q 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart' lib/main.dart
+          grep -q 'esc_pos_utils_plus' lib/main.dart
+          grep -q "'billaresdonmiguel/network'" lib/main.dart
+          echo 'THERMAL_48MM_LAYOUT_CHECK=OK'
+
+      - name: Preparar SDK y NDK de Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/cmdline-tools/bin:${ANDROID_HOME}/platform-tools:${PATH}"
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-${COMPILE_SDK}" "build-tools;36.0.0" "ndk;${NDK_VERSION}"
+          test -d "${ANDROID_HOME}/ndk/${NDK_VERSION}"
+
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      - name: Formatear y analizar
+        run: |
+          dart format lib test
+          flutter analyze --fatal-warnings --no-fatal-infos
+
+      - name: Ejecutar pruebas
+        run: flutter test
+
+      - name: Compilar APK 1.3.1 build 131
+        env:
+          GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=2g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8
+        run: flutter build apk --release --no-shrink --build-name=${BUILD_NAME} --build-number=${BUILD_NUMBER}
+
+      - name: Validar APK 1.3.1 build 131
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          test -s "$APK"
+          export PATH="${ANDROID_HOME}/build-tools/36.0.0:${ANDROID_HOME}/platform-tools:${PATH}"
+          aapt dump badging "$APK" | tee /tmp/apk-badging.txt
+          grep -q "package: name='com.billaresdonmiguel.billares_don_miguel'" /tmp/apk-badging.txt
+          grep -q "versionCode='131'" /tmp/apk-badging.txt
+          grep -q "versionName='1.3.1'" /tmp/apk-badging.txt
+          apksigner verify --verbose "$APK"
+          if zipinfo -1 "$APK" | grep -Eq '^split_config|^config\.'; then
+            echo 'ERROR: el APK no es universal'
+            exit 1
+          fi
+
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Billares-Don-Miguel-APK-v1.3.1-build131-run${{ github.run_number }}
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Crear release v1.3.1
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.3.1-build${{ github.run_number }}
+          name: Billares Don Miguel v1.3.1 (build 131, run ${{ github.run_number }})
+          generate_release_notes: true
+          files: build/app/outputs/flutter-apk/app-release.apk
