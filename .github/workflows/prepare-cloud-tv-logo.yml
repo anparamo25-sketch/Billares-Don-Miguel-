@@ -30,34 +30,16 @@ jobs:
           git fetch --no-tags --depth=1 origin 3f28f366c2626b3f231527c08c5109b869776c95
           git checkout 3f28f366c2626b3f231527c08c5109b869776c95 -- cloud-tv/public/tv-logo.png
           test -s cloud-tv/public/tv-logo.png
-          python3 - <<'PY'
-          from pathlib import Path
-          import struct
-          p = Path('cloud-tv/public/tv-logo.png')
-          data = p.read_bytes()
-          if not data.startswith(b'\x89PNG\r\n\x1a\n'):
-              raise SystemExit('Original file is not a valid PNG')
-          w, h = struct.unpack('>II', data[16:24])
-          print(f'Correct original PNG source: {p} ({len(data)} bytes, {w}x{h})')
-          PY
+          file cloud-tv/public/tv-logo.png
 
       - name: Prepare 1024x1024 PNG from the correct original artwork
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          from PIL import Image
-          p = Path('cloud-tv/public/tv-logo.png')
-          im = Image.open(p).convert('RGBA')
-          if im.size != (1024, 1024):
-              im = im.resize((1024, 1024), Image.Resampling.LANCZOS)
-          im.save(p, format='PNG', optimize=True)
-          check = Image.open(p)
-          if check.size != (1024, 1024) or check.format != 'PNG':
-              raise SystemExit('Final logo is not a 1024x1024 PNG')
-          print(f'Final Cloud TV logo: {p} ({check.size[0]}x{check.size[1]}, PNG)')
-          PY
+          identify cloud-tv/public/tv-logo.png
+          convert cloud-tv/public/tv-logo.png -resize 1024x1024! -define png:color-type=6 -strip cloud-tv/public/tv-logo.png
+          identify cloud-tv/public/tv-logo.png
+          test "$(identify -format '%m %wx%h' cloud-tv/public/tv-logo.png)" = "PNG 1024x1024"
 
       - name: Force Cloud TV to use the local PNG
         shell: bash
