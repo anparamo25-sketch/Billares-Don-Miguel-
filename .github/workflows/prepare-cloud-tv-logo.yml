@@ -1,6 +1,6 @@
 name: Prepare Cloud TV logo
 
-# Cloud TV deployment refresh: preserve the original PNG and trigger the hosting redeploy.
+# Cloud TV deployment refresh: preserve the correct original PNG and trigger the hosting redeploy.
 
 on:
   push:
@@ -23,20 +23,40 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Restore the original PNG logo without conversion
+      - name: Restore the correct original PNG logo without WebP conversion
         shell: bash
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=1 origin 88d5c19ac93916f8be7bc659b645c310061bf72a
-          git checkout 88d5c19ac93916f8be7bc659b645c310061bf72a -- cloud-tv/public/tv-logo.png
+          git fetch --no-tags --depth=1 origin 3f28f366c2626b3f231527c08c5109b869776c95
+          git checkout 3f28f366c2626b3f231527c08c5109b869776c95 -- cloud-tv/public/tv-logo.png
           test -s cloud-tv/public/tv-logo.png
           python3 - <<'PY'
           from pathlib import Path
+          import struct
           p = Path('cloud-tv/public/tv-logo.png')
           data = p.read_bytes()
           if not data.startswith(b'\x89PNG\r\n\x1a\n'):
               raise SystemExit('Original file is not a valid PNG')
-          print(f'Original PNG preserved: {p} ({len(data)} bytes)')
+          w, h = struct.unpack('>II', data[16:24])
+          print(f'Correct original PNG source: {p} ({len(data)} bytes, {w}x{h})')
+          PY
+
+      - name: Prepare 1024x1024 PNG from the correct original artwork
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          p = Path('cloud-tv/public/tv-logo.png')
+          im = Image.open(p).convert('RGBA')
+          if im.size != (1024, 1024):
+              im = im.resize((1024, 1024), Image.Resampling.LANCZOS)
+          im.save(p, format='PNG', optimize=True)
+          check = Image.open(p)
+          if check.size != (1024, 1024) or check.format != 'PNG':
+              raise SystemExit('Final logo is not a 1024x1024 PNG')
+          print(f'Final Cloud TV logo: {p} ({check.size[0]}x{check.size[1]}, PNG)')
           PY
 
       - name: Force Cloud TV to use the local PNG
@@ -54,7 +74,7 @@ jobs:
           PY
           grep -q 'src="/tv-logo.png"' cloud-tv/public/index.html
 
-      - name: Commit preserved PNG and source update
+      - name: Commit correct PNG logo
         shell: bash
         run: |
           set -euo pipefail
@@ -62,8 +82,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add cloud-tv/public/tv-logo.png cloud-tv/public/index.html
           if git diff --cached --quiet; then
-            echo "TV logo files already current"
+            echo "TV logo already current"
           else
-            git commit -m "Restore original PNG logo for Cloud TV"
+            git commit -m "Use correct original PNG logo in Cloud TV"
             git push
           fi
