@@ -12,8 +12,8 @@ permissions:
 
 env:
   FLUTTER_VERSION: 3.47.3
-  BUILD_NAME: 1.3.0
-  BUILD_NUMBER: 130
+  BUILD_NAME: 1.3.1
+  BUILD_NUMBER: 131
   MIN_SDK: 23
   COMPILE_SDK: 36
   NDK_VERSION: 28.2.13676358
@@ -37,19 +37,19 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Aplicar migracion de fuente 1.3.0
+      - name: Verificar fuente funcional 1.3.1/131
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/migrate_1_3_0.py
-          if ! git diff --quiet -- lib/main.dart; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add lib/main.dart
-            git commit -m "feat: complete v1.3.0 source implementation"
-            git push origin HEAD:main
-          fi
-          grep -q "const String appVersion = '1.3.0+130'" lib/main.dart
+          grep -q "const String appVersion = '1.3.1+131'" lib/main.dart
+          grep -q "String get tvHtml =>" lib/main.dart
+          grep -q "Future<String?> printReceipt(BillTable table)" lib/main.dart
+          grep -q "Future<String?> printWorkdaySummary" lib/main.dart
+          grep -q "WeeklyReportBuilder" lib/main.dart
+          grep -q "const Duration(days: 30)" lib/main.dart
+          test -s cloud-tv/public/index.html
+          ! grep -R "print_bluetooth_thermal_plus" -n lib pubspec.yaml
+          git diff --check
 
       - name: Preparar SDK y NDK de Android
         shell: bash
@@ -95,19 +95,6 @@ jobs:
           grep -q "'billaresdonmiguel/network'" lib/main.dart
           grep -q "acquireMulticastLock" lib/main.dart
 
-      - name: Verificar fuente funcional 1.3.0/130
-        run: |
-          set -euo pipefail
-          grep -q "const String appVersion = '1.3.0+130'" lib/main.dart
-          grep -q "String get tvHtml =>" lib/main.dart
-          grep -q "Future<String?> printReceipt(BillTable table)" lib/main.dart
-          grep -q "Future<String?> printWorkdaySummary" lib/main.dart
-          grep -q "WeeklyReportBuilder" lib/main.dart
-          grep -q "const Duration(days: 30)" lib/main.dart
-          test -s cloud-tv/public/index.html
-          ! grep -R "print_bluetooth_thermal_plus" -n lib pubspec.yaml
-          git diff --check
-
       - name: Instalar dependencias
         run: flutter pub get
 
@@ -145,7 +132,7 @@ jobs:
           if missing:
               raise SystemExit('Faltan elementos funcionales de TV: ' + ', '.join(missing))
           PY
-          grep -q "const String appVersion = '1.3.0+130'" lib/main.dart
+          grep -q "const String appVersion = '1.3.1+131'" lib/main.dart
           grep -q "package:print_bluetooth_thermal/print_bluetooth_thermal.dart" lib/main.dart
           grep -q "esc_pos_utils_plus" lib/main.dart
           grep -q "Future<String?> printReceipt(BillTable table)" lib/main.dart
@@ -163,7 +150,7 @@ jobs:
             cp "$TMP_PROJECT/android/gradlew.bat" android/gradlew.bat
             mkdir -p android/gradle/wrapper
             cp "$TMP_PROJECT/android/gradle/wrapper/gradle-wrapper.jar" android/gradle/wrapper/gradle-wrapper.jar
-            cp "$TMP_PROJECT/android/gradle/wrapper/gradle-wrapper.properties" android/gradle/wrapper/gradle-wrapper.properties
+            cp "$TMP_PROJECT/android/gradle/gradle-wrapper.properties" android/gradle/wrapper/gradle-wrapper.properties
             chmod +x android/gradlew
             rm -rf "$TMP_PROJECT"
           fi
@@ -190,8 +177,8 @@ jobs:
           export PATH="${ANDROID_HOME}/build-tools/36.0.0:${ANDROID_HOME}/platform-tools:${PATH}"
           aapt dump badging "$APK" | tee /tmp/apk-badging.txt
           grep -q "package: name='com.billaresdonmiguel.billares_don_miguel'" /tmp/apk-badging.txt
-          grep -q "versionCode='130'" /tmp/apk-badging.txt
-          grep -q "versionName='1.3.0'" /tmp/apk-badging.txt
+          grep -q "versionCode='131'" /tmp/apk-badging.txt
+          grep -q "versionName='1.3.1'" /tmp/apk-badging.txt
           grep -q "uses-permission: name='android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE'" /tmp/apk-badging.txt
           grep -q "application-label:'Billares Don Miguel'" /tmp/apk-badging.txt
           apksigner verify --verbose "$APK"
