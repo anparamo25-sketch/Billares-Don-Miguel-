@@ -150,7 +150,7 @@ jobs:
             cp "$TMP_PROJECT/android/gradlew.bat" android/gradlew.bat
             mkdir -p android/gradle/wrapper
             cp "$TMP_PROJECT/android/gradle/wrapper/gradle-wrapper.jar" android/gradle/wrapper/gradle-wrapper.jar
-            cp "$TMP_PROJECT/android/gradle/gradle-wrapper.properties" android/gradle/wrapper/gradle-wrapper.properties
+            cp "$TMP_PROJECT/android/gradle/wrapper/gradle-wrapper.properties" android/gradle/wrapper/gradle-wrapper.properties
             chmod +x android/gradlew
             rm -rf "$TMP_PROJECT"
           fi
