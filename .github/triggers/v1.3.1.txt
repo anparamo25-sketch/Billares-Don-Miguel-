@@ -1,2 +1,3 @@
 Billares Don Miguel v1.3.1 build 131: compact 48mm thermal receipt layout only.
 Relaunch build 131 from corrected source-aware receipt-generator migration logic.
+Build trigger refreshed after removing obsolete one-time correction workflow.
