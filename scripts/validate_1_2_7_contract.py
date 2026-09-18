@@ -93,7 +93,7 @@ for forbidden in ('faltante', 'sobrante', 'diferencia de caja', 'caja cuadrada')
         raise SystemExit(f'1.3.2 CONTRACT FAILED: lógica prohibida: {forbidden}')
 
 version_match = re.search(r"const String appVersion = '([^']+)';", APP_SOURCE)
-if not version_match or version_match.group(1) != '1.3.2+131':
-    raise SystemExit('1.3.2 CONTRACT FAILED: la fuente no corresponde a la versión 1.3.2+131')
+if not version_match or version_match.group(1) != '1.3.2+132':
+    raise SystemExit('1.3.2 CONTRACT FAILED: la fuente no corresponde a la versión 1.3.2+132')
 
-print(f'OK: contrato funcional 1.3.2/131 validado; TV publica: {PUBLIC_TV_URL}')
+print(f'OK: contrato funcional 1.3.2/132 validado; TV publica: {PUBLIC_TV_URL}')
