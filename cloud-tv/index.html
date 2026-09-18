@@ -33,11 +33,59 @@ header{height:82px;flex:0 0 82px;padding:7px 8px;background:#fff;border-bottom:3
 </main>
 <script>
 const rates={1:120,2:120,3:100,4:100,5:70};let state={};
+let ws=null, reconnectTimer=null, heartbeatTimer=null, manualClose=false;
+
 function safe(v){return v==null||v===''?'—':String(v)}
 function money(v){return v==null||v===''?'—':'C$ '+Math.round(Number(v)||0)}
-function render(){const root=document.getElementById('tables');root.innerHTML='';for(let i=1;i<=5;i++){const t=state[i]||{status:'Disponible',rate:rates[i],amount:null};const cls=t.status==='En juego'?'red':t.status==='Pendiente de cobro'?'yellow':'green';const totalLabel=t.status==='En juego'?'TOTAL ACTUAL':'TOTAL A PAGAR';root.innerHTML+=`<article class="card ${cls}"><div class="num">Mesa ${i}</div><div class="status">${safe(t.status||'Disponible')}</div><div class="rate">Tarifa: ${money(t.rate??rates[i])} / hora</div><div class="line"><b>Inicio:</b> ${safe(t.start)}</div><div class="line"><b>Tiempo jugado:</b> ${safe(t.elapsed)}</div><div class="line"><b>Finalización:</b> ${safe(t.end)}</div><div class="pay"><div class="payLabel">${totalLabel}</div><div class="money">${money(t.amount)}</div></div></article>`}}
-function connect(){const protocol=location.protocol==='https:'?'wss:':'ws:';const ws=new WebSocket(protocol+'//'+location.host+'/ws');ws.onopen=()=>{updateClock()};ws.onmessage=e=>{try{state=JSON.parse(e.data);render()}catch(_){}};ws.onclose=()=>setTimeout(connect,3000)}
-function updateClock(){document.getElementById('clock').textContent=new Date().toLocaleTimeString('es-NI',{hour:'2-digit',minute:'2-digit',hour12:true})}render();updateClock();setInterval(updateClock,1000);connect();
+function render(){
+ const root=document.getElementById('tables');root.innerHTML='';
+ for(let i=1;i<=5;i++){
+  const t=state[i]||{status:'Disponible',rate:rates[i],amount:null};
+  const cls=t.status==='En juego'?'red':t.status==='Pendiente de cobro'?'yellow':'green';
+  const totalLabel=t.status==='En juego'?'TOTAL ACTUAL':'TOTAL A PAGAR';
+  root.innerHTML+=`<article class="card ${cls}"><div class="num">Mesa ${i}</div><div class="status">${safe(t.status||'Disponible')}</div><div class="rate">Tarifa: ${money(t.rate??rates[i])} / hora</div><div class="line"><b>Inicio:</b> ${safe(t.start)}</div><div class="line"><b>Tiempo jugado:</b> ${safe(t.elapsed)}</div><div class="line"><b>Finalización:</b> ${safe(t.end)}</div><div class="pay"><div class="payLabel">${totalLabel}</div><div class="money">${money(t.amount)}</div></div></article>`
+ }
+}
+function applyPayload(raw){
+ try{
+  const payload=JSON.parse(raw);
+  const tables=Array.isArray(payload)?payload:(Array.isArray(payload.tables)?payload.tables:[]);
+  const next={};
+  tables.forEach((t,index)=>{const n=Number(t.number??t.table??(index+1));if(n>=1&&n<=5)next[n]=t});
+  state=next;render();
+ }catch(_){}
+}
+function fetchCurrentState(){
+ fetch('/api/state',{cache:'no-store'}).then(r=>r.ok?r.text():Promise.reject()).then(applyPayload).catch(()=>{});
+}
+function scheduleReconnect(){
+ if(manualClose||reconnectTimer)return;
+ reconnectTimer=setTimeout(()=>{reconnectTimer=null;connect()},2000);
+}
+function connect(){
+ if(manualClose)return;
+ if(ws){try{ws.close()}catch(_){}}
+ const protocol=location.protocol==='https:'?'wss:':'ws:';
+ ws=new WebSocket(protocol+'//'+location.host+'/api/stream');
+ ws.onopen=()=>{
+  fetchCurrentState();
+  clearInterval(heartbeatTimer);
+  heartbeatTimer=setInterval(()=>{
+   if(ws&&ws.readyState===WebSocket.OPEN){try{ws.send('ping')}catch(_){}}
+   else scheduleReconnect();
+  },20000);
+ };
+ ws.onmessage=e=>applyPayload(e.data);
+ ws.onerror=()=>{try{ws.close()}catch(_){}};
+ ws.onclose=()=>{
+  clearInterval(heartbeatTimer);heartbeatTimer=null;
+  fetchCurrentState();
+  scheduleReconnect();
+ };
+}
+function updateClock(){document.getElementById('clock').textContent=new Date().toLocaleTimeString('es-NI',{hour:'2-digit',minute:'2-digit',hour12:true})}
+render();updateClock();setInterval(updateClock,1000);fetchCurrentState();connect();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){fetchCurrentState();if(!ws||ws.readyState!==WebSocket.OPEN)connect()}});
 </script>
 </body>
 </html>
