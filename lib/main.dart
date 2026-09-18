@@ -16,7 +16,7 @@ import 'cloud_tv_sync.dart';
 import 'receipt_preview_page.dart';
 import 'weekly_report.dart';
 
-const String appVersion = '1.3.1+131';
+const String appVersion = '1.3.2+132';
 const String defaultPassword = '1234';
 const String updateManifestUrl =
     'https://github.com/anparamo25-sketch/Billares-Don-Miguel-/raw/refs/heads/main/update.json';
@@ -982,7 +982,13 @@ class _DashboardPageState extends State<DashboardPage>
       bytes.addAll(
         generator.text(
           'Mesa ${table.number}',
-          styles: const PosStyles(align: PosAlign.center, bold: true),
+          styles: const PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          height: PosTextSize.size1,
+          width: PosTextSize.size1,
+          fontType: PosFontType.fontB,
+        ),
         ),
       );
       bytes.addAll(generator.hr());
@@ -998,7 +1004,13 @@ class _DashboardPageState extends State<DashboardPage>
       bytes.addAll(
         generator.text(
           'MONTO A PAGAR',
-          styles: const PosStyles(align: PosAlign.center, bold: true),
+          styles: const PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          height: PosTextSize.size1,
+          width: PosTextSize.size1,
+          fontType: PosFontType.fontB,
+        ),
         ),
       );
       bytes.addAll(
@@ -1012,7 +1024,6 @@ class _DashboardPageState extends State<DashboardPage>
           ),
         ),
       );
-      bytes.addAll(generator.feed(1));
       bytes.addAll(generator.cut());
       final bool printed = await PrintBluetoothThermal.writeBytes(bytes);
       if (!printed) return 'La impresora no aceptó el recibo.';
@@ -1075,7 +1086,13 @@ class _DashboardPageState extends State<DashboardPage>
       bytes.addAll(
         generator.text(
           'CIERRE DE JORNADA',
-          styles: const PosStyles(align: PosAlign.center, bold: true),
+          styles: const PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          height: PosTextSize.size1,
+          width: PosTextSize.size1,
+          fontType: PosFontType.fontB,
+        ),
         ),
       );
       bytes.addAll(generator.hr());
@@ -1085,7 +1102,6 @@ class _DashboardPageState extends State<DashboardPage>
       bytes.addAll(generator.text('Total generado: ${totalMoney(generated)}'));
       bytes.addAll(generator.text('Efectivo físico: ${totalMoney(cash)}'));
       bytes.addAll(generator.hr());
-      bytes.addAll(generator.feed(1));
       bytes.addAll(generator.cut());
       final bool printed = await PrintBluetoothThermal.writeBytes(bytes);
       return printed ? null : 'La impresora no aceptó el resumen de cierre.';
@@ -1101,7 +1117,7 @@ class _DashboardPageState extends State<DashboardPage>
         !mounted) {
       return;
     }
-    final bool? printed = await Navigator.of(context).push<bool>(
+    final bool? charged = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => ReceiptPreviewPage(
           tableNumber: table.number,
@@ -1114,7 +1130,7 @@ class _DashboardPageState extends State<DashboardPage>
         ),
       ),
     );
-    if (printed != true || !mounted) return;
+    if (charged != true || !mounted) return;
 
     final HistoryEntry entry = HistoryEntry(
       table: table.number,
