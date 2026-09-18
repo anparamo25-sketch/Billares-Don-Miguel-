@@ -37,7 +37,28 @@ class _ReceiptPreviewPageState extends State<ReceiptPreviewPage> {
       return;
     }
     setState(() => printing = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+    final bool? chargeWithoutPrinting = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: const Text('No se pudo imprimir'),
+        content: Text(
+          '$error\n\nLa mesa puede cobrarse de todas formas. ¿Deseas registrar el cobro sin imprimir el recibo?',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Cobrar sin imprimir'),
+          ),
+        ],
+      ),
+    );
+    if (chargeWithoutPrinting == true && mounted) {
+      Navigator.of(context).pop(true);
+    }
   }
 
   @override
@@ -134,7 +155,7 @@ class _ReceiptPreviewPageState extends State<ReceiptPreviewPage> {
                     onPressed: printing ? null : printNow,
                     icon: const Icon(Icons.print_outlined),
                     label: Text(
-                      printing ? 'IMPRIMIENDO…' : 'IMPRIMIR',
+                      printing ? 'PROCESANDO…' : 'COBRAR / IMPRIMIR',
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
