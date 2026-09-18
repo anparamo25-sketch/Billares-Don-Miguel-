@@ -12,8 +12,8 @@ permissions:
 
 env:
   FLUTTER_VERSION: 3.47.3
-  BUILD_NAME: 1.3.1
-  BUILD_NUMBER: 131
+  BUILD_NAME: 1.3.2
+  BUILD_NUMBER: 132
   MIN_SDK: 23
   COMPILE_SDK: 36
   NDK_VERSION: 28.2.13676358
@@ -37,11 +37,11 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Verificar fuente funcional 1.3.1/131
+      - name: Verificar fuente funcional 1.3.2/132
         shell: bash
         run: |
           set -euo pipefail
-          grep -q "const String appVersion = '1.3.1+131'" lib/main.dart
+          grep -q "const String appVersion = '1.3.2+132'" lib/main.dart
           grep -q "String get tvHtml =>" lib/main.dart
           grep -q "Future<String?> printReceipt(BillTable table)" lib/main.dart
           grep -q "Future<String?> printWorkdaySummary" lib/main.dart
@@ -132,7 +132,7 @@ jobs:
           if missing:
               raise SystemExit('Faltan elementos funcionales de TV: ' + ', '.join(missing))
           PY
-          grep -q "const String appVersion = '1.3.1+131'" lib/main.dart
+          grep -q "const String appVersion = '1.3.2+132'" lib/main.dart
           grep -q "package:print_bluetooth_thermal/print_bluetooth_thermal.dart" lib/main.dart
           grep -q "esc_pos_utils_plus" lib/main.dart
           grep -q "Future<String?> printReceipt(BillTable table)" lib/main.dart
@@ -177,8 +177,8 @@ jobs:
           export PATH="${ANDROID_HOME}/build-tools/36.0.0:${ANDROID_HOME}/platform-tools:${PATH}"
           aapt dump badging "$APK" | tee /tmp/apk-badging.txt
           grep -q "package: name='com.billaresdonmiguel.billares_don_miguel'" /tmp/apk-badging.txt
-          grep -q "versionCode='131'" /tmp/apk-badging.txt
-          grep -q "versionName='1.3.1'" /tmp/apk-badging.txt
+          grep -q "versionCode='132'" /tmp/apk-badging.txt
+          grep -q "versionName='1.3.2'" /tmp/apk-badging.txt
           grep -q "uses-permission: name='android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE'" /tmp/apk-badging.txt
           grep -q "application-label:'Billares Don Miguel'" /tmp/apk-badging.txt
           apksigner verify --verbose "$APK"
