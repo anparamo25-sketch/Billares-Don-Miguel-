@@ -42,7 +42,7 @@ class _ReceiptPreviewPageState extends State<ReceiptPreviewPage> {
       builder: (BuildContext dialogContext) => AlertDialog(
         title: const Text('No se pudo imprimir'),
         content: Text(
-          '$error\n\nLa mesa puede cobrarse de todas formas. ¿Deseas registrar el cobro sin imprimir el recibo?',
+          '$error\n\nLa impresora no responde o puede no tener papel. Puedes cobrar la mesa sin imprimir el recibo. ¿Deseas continuar?',
         ),
         actions: <Widget>[
           TextButton(
