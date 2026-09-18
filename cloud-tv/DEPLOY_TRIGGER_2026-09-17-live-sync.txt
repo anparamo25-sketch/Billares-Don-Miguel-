@@ -1,0 +1,1 @@
+Cloud TV deployment trigger: fix live WebSocket endpoint, automatic reconnect, heartbeat and state resync. No APK/application logic changes.
